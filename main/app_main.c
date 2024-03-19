@@ -45,11 +45,11 @@
 /*  Required for server verification during OTA, PEM format as string  */
 char server_cert[] = {};
 
-static const char *TAG = "HAP Fan";
+static const char *TAG = "HAP Sprinkler";
 
-#define FAN_TASK_PRIORITY  1
-#define FAN_TASK_STACKSIZE 4 * 1024
-#define FAN_TASK_NAME      "hap_fan"
+#define SPRINKLER_TASK_PRIORITY  1
+#define SPRINKLER_TASK_STACKSIZE 4 * 1024
+#define SPRINKLER_TASK_NAME      "hap_sprinkler"
 
 /* Reset network credentials if button is pressed for more than 3 seconds and then released */
 #define RESET_NETWORK_BUTTON_TIMEOUT        3
@@ -92,7 +92,7 @@ static void reset_key_init(uint32_t key_gpio_pin)
  * In a real accessory, something like LED blink should be implemented
  * got visual identification
  */
-static int fan_identify(hap_acc_t *ha)
+static int sprinkler_identify(hap_acc_t *ha)
 {
     ESP_LOGI(TAG, "Accessory identified");
     return HAP_SUCCESS;
@@ -102,7 +102,7 @@ static int fan_identify(hap_acc_t *ha)
  * An optional HomeKit Event handler which can be used to track HomeKit
  * specific events.
  */
-static void fan_hap_event_handler(void* arg, esp_event_base_t event_base, int32_t event, void *data)
+static void sprinkler_hap_event_handler(void* arg, esp_event_base_t event_base, int32_t event, void *data)
 {
     switch(event) {
         case HAP_EVENT_PAIRING_STARTED :
@@ -138,18 +138,12 @@ static void fan_hap_event_handler(void* arg, esp_event_base_t event_base, int32_
     }
 }
 
-/* A dummy callback for handling a read on the "Direction" characteristic of Fan.
- * In an actual accessory, this should read from hardware.
- * Read routines are generally not required as the value is available with th HAP core
- * when it is updated from write routines. For external triggers (like fan switched on/off
- * using physical button), accessories should explicitly call hap_char_update_val()
- * instead of waiting for a read request.
- */
-static int fan_read(hap_char_t *hc, hap_status_t *status_code, void *serv_priv, void *read_priv)
+static int sprinkler_read(hap_char_t *hc, hap_status_t *status_code, void *serv_priv, void *read_priv)
 {
     if (hap_req_get_ctrl_id(read_priv)) {
         ESP_LOGI(TAG, "Received read from %s", hap_req_get_ctrl_id(read_priv));
     }
+    ESP_LOGI(TAG, "UUID %s", hap_char_get_type_uuid(hc));
     if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ROTATION_DIRECTION)) {
        /* Read the current value, toggle it and set the new value.
         * A separate variable should be used for the new value, as the hap_char_get_val()
@@ -169,35 +163,43 @@ static int fan_read(hap_char_t *hc, hap_status_t *status_code, void *serv_priv, 
     return HAP_SUCCESS;
 }
 
-/* A dummy callback for handling a write on the "On" characteristic of Fan.
- * In an actual accessory, this should control the hardware
- */
-static int fan_write(hap_write_data_t write_data[], int count,
+static int sprinkler_write(hap_write_data_t write_data[], int count,
         void *serv_priv, void *write_priv)
 {
-    if (hap_req_get_ctrl_id(write_priv)) {
+    if (hap_req_get_ctrl_id(write_priv))
+    {
         ESP_LOGI(TAG, "Received write from %s", hap_req_get_ctrl_id(write_priv));
     }
-    ESP_LOGI(TAG, "Fan Write called with %d chars", count);
+    ESP_LOGI(TAG, "Sprinkler write called with %d chars", count);
     int i, ret = HAP_SUCCESS;
     hap_write_data_t *write;
-    for (i = 0; i < count; i++) {
+    for (i = 0; i < count; i++)
+    {
         write = &write_data[i];
-        if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ON)) {
+        ESP_LOGI(TAG, "UUID %s", hap_char_get_type_uuid(write->hc));
+        if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ON))
+        {
             ESP_LOGI(TAG, "Received Write. Fan %s", write->val.b ? "On" : "Off");
             /* TODO: Control Actual Hardware */
             hap_char_update_val(write->hc, &(write->val));
             *(write->status) = HAP_STATUS_SUCCESS;
-        } else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ROTATION_DIRECTION)) {
-            if (write->val.i > 1) {
+        }
+        /*else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ROTATION_DIRECTION))
+        {
+            if (write->val.i > 1)
+            {
                 *(write->status) = HAP_STATUS_VAL_INVALID;
                 ret = HAP_FAIL;
-            } else {
+            }
+            else
+            {
                 ESP_LOGI(TAG, "Received Write. Fan %s", write->val.i ? "AntiClockwise" : "Clockwise");
                 hap_char_update_val(write->hc, &(write->val));
                 *(write->status) = HAP_STATUS_SUCCESS;
             }
-        } else {
+        } */
+        else
+        {
             *(write->status) = HAP_STATUS_RES_ABSENT;
         }
     }
@@ -205,7 +207,7 @@ static int fan_write(hap_write_data_t write_data[], int count,
 }
 
 /*The main thread for handling the Fan Accessory */
-static void fan_thread_entry(void *p)
+static void sprinkler_thread_entry(void *p)
 {
     hap_acc_t *accessory;
     hap_serv_t *service;
@@ -225,15 +227,15 @@ static void fan_thread_entry(void *p)
      * the mandatory services internally
      */
     hap_acc_cfg_t cfg = {
-        .name = "Esp-Fan",
-        .manufacturer = "Espressif",
-        .model = "EspFan01",
+        .name = "Sprinkler",
+        .manufacturer = "Gormack",
+        .model = "S1",
         .serial_num = "001122334455",
-        .fw_rev = "0.9.0",
+        .fw_rev = "1.0.0",
         .hw_rev = NULL,
-        .pv = "1.1.0",
-        .identify_routine = fan_identify,
-        .cid = HAP_CID_FAN,
+        .pv = "1.0.0",
+        .identify_routine = sprinkler_identify,
+        .cid = HAP_CID_SPRINKLER,
     };
     /* Create accessory object */
     accessory = hap_acc_create(&cfg);
@@ -246,15 +248,14 @@ static void fan_thread_entry(void *p)
     hap_acc_add_wifi_transport_service(accessory, 0);
 
     /* Create the Fan Service. Include the "name" since this is a user visible service  */
-    service = hap_serv_fan_create(false);
-    hap_serv_add_char(service, hap_char_name_create("My Fan"));
-    hap_serv_add_char(service, hap_char_rotation_direction_create(0));
+    service = hap_serv_irrigation_system_create(0, 0, 0);
+    hap_serv_add_char(service, hap_char_name_create("My Sprinkler"));
 
     /* Set the write callback for the service */
-    hap_serv_set_write_cb(service, fan_write);
+    hap_serv_set_write_cb(service, sprinkler_write);
 
     /* Set the read callback for the service (optional) */
-    hap_serv_set_read_cb(service, fan_read);
+    hap_serv_set_read_cb(service, sprinkler_read);
 
     /* Add the Fan Service to the Accessory Object */
     hap_acc_add_serv(accessory, service);
@@ -315,7 +316,7 @@ static void fan_thread_entry(void *p)
     /* Register an event handler for HomeKit specific events.
      * All event handlers should be registered only after app_wifi_init()
      */
-    esp_event_handler_register(HAP_EVENT, ESP_EVENT_ANY_ID, &fan_hap_event_handler, NULL);
+    esp_event_handler_register(HAP_EVENT, ESP_EVENT_ANY_ID, &sprinkler_hap_event_handler, NULL);
 
     /* After all the initializations are done, start the HAP core */
     hap_start();
@@ -327,6 +328,6 @@ static void fan_thread_entry(void *p)
 
 void app_main()
 {
-    xTaskCreate(fan_thread_entry, FAN_TASK_NAME, FAN_TASK_STACKSIZE, NULL, FAN_TASK_PRIORITY, NULL);
+    xTaskCreate(sprinkler_thread_entry, SPRINKLER_TASK_NAME, SPRINKLER_TASK_STACKSIZE, NULL, SPRINKLER_TASK_PRIORITY, NULL);
 }
 
