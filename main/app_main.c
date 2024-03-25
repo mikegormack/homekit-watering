@@ -45,6 +45,8 @@
 /*  Required for server verification during OTA, PEM format as string  */
 char server_cert[] = {};
 
+static hap_serv_t *service;
+
 static const char *TAG = "HAP Sprinkler";
 
 #define SPRINKLER_TASK_PRIORITY  1
@@ -144,11 +146,56 @@ static int sprinkler_read(hap_char_t *hc, hap_status_t *status_code, void *serv_
         ESP_LOGI(TAG, "Received read from %s", hap_req_get_ctrl_id(read_priv));
     }
     ESP_LOGI(TAG, "UUID %s", hap_char_get_type_uuid(hc));
-    if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ROTATION_DIRECTION)) {
-       /* Read the current value, toggle it and set the new value.
-        * A separate variable should be used for the new value, as the hap_char_get_val()
-        * API returns a const pointer
-        */
+
+	/*if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ON))
+    {
+        *status_code = HAP_STATUS_SUCCESS;
+        ESP_LOGI(TAG, "On");
+	}*/
+	const hap_val_t *cur_val;
+    if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ACTIVE))
+    {
+        *status_code = HAP_STATUS_SUCCESS;
+        cur_val = hap_char_get_val(hc);
+        ESP_LOGI(TAG, "Active: %s", cur_val->b ? "1" : "0");
+	}
+	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_IN_USE))
+    {
+        *status_code = HAP_STATUS_SUCCESS;
+        cur_val = hap_char_get_val(hc);
+		ESP_LOGI(TAG, "In Use: %s", cur_val->b ? "1" : "0");
+	}
+	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_NAME))
+    {
+        *status_code = HAP_STATUS_SUCCESS;
+        cur_val = hap_char_get_val(hc);
+		ESP_LOGI(TAG, "Name: %s", cur_val->s);
+	}
+	/*else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_PROGRAM_MODE))
+    {
+        *status_code = HAP_STATUS_SUCCESS;
+        ESP_LOGI(TAG, "Program Mode");
+	}*/
+	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_SET_DURATION))
+    {
+       *status_code = HAP_STATUS_SUCCESS;
+        cur_val = hap_char_get_val(hc);
+        ESP_LOGI(TAG, "Set Duration: %lu", cur_val->u);
+	}
+	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_REMAINING_DURATION))
+    {
+		*status_code = HAP_STATUS_SUCCESS;
+		 cur_val = hap_char_get_val(hc);
+        ESP_LOGI(TAG, "Rem Duration: %lu", cur_val->u);
+	}
+	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_VALVE_TYPE))
+    {
+        *status_code = HAP_STATUS_SUCCESS;
+         cur_val = hap_char_get_val(hc);
+		ESP_LOGI(TAG, "Valve Type: %lu", cur_val->u);
+	}
+   /* if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ROTATION_DIRECTION)) {
+
         const hap_val_t *cur_val = hap_char_get_val(hc);
 
         hap_val_t new_val;
@@ -159,7 +206,7 @@ static int sprinkler_read(hap_char_t *hc, hap_status_t *status_code, void *serv_
         }
         hap_char_update_val(hc, &new_val);
         *status_code = HAP_STATUS_SUCCESS;
-    }
+    }*/
     return HAP_SUCCESS;
 }
 
@@ -177,13 +224,63 @@ static int sprinkler_write(hap_write_data_t write_data[], int count,
     {
         write = &write_data[i];
         ESP_LOGI(TAG, "UUID %s", hap_char_get_type_uuid(write->hc));
-        if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ON))
-        {
-            ESP_LOGI(TAG, "Received Write. Fan %s", write->val.b ? "On" : "Off");
-            /* TODO: Control Actual Hardware */
-            hap_char_update_val(write->hc, &(write->val));
+
+	   if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ACTIVE))
+	    {
+	        hap_char_update_val(write->hc, &(write->val));
+
+	        hap_char_t *in_use = hap_serv_get_char_by_uuid(service, HAP_CHAR_UUID_IN_USE);
+
+	        ESP_LOGI(TAG, "Srv Addr %lu", (uint32_t)service);
+	        ESP_LOGI(TAG, "Srv Priv Addr %lu", (uint32_t)serv_priv);
+	        hap_val_t new_val;
+
+	        if (write->val.b)
+	        {
+	            ESP_LOGI(TAG, "Turned ON");
+	        }
+	        else
+	        {
+	            ESP_LOGI(TAG, "Turned OFF");
+	        }
+	        new_val.u = write->val.u;
+	        int res = hap_char_update_val(in_use, &new_val);
+
+			 ESP_LOGI(TAG, "Update Char Res %d", res);
+
+			//const hap_val_t *cur_val = hap_char_get_val(in_use);
+			//ESP_LOGI(TAG, "In Use: %s", cur_val->b ? "1" : "0");
+
             *(write->status) = HAP_STATUS_SUCCESS;
-        }
+		}
+		else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_IN_USE))
+	    {
+	        hap_char_update_val(write->hc, &(write->val));
+            *(write->status) = HAP_STATUS_SUCCESS;
+		}
+		else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_PROGRAM_MODE))
+	    {
+	        hap_char_update_val(write->hc, &(write->val));
+            *(write->status) = HAP_STATUS_SUCCESS;
+		}
+		else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_SET_DURATION))
+	    {
+	        hap_char_update_val(write->hc, &(write->val));
+	        ESP_LOGI(TAG, "Set Duration %lu", write->val.u);
+
+	        hap_char_t *rem_dur = hap_serv_get_char_by_uuid(service, HAP_CHAR_UUID_REMAINING_DURATION);
+	        hap_val_t new_val;
+	        new_val.u = write->val.u - 100;
+	        hap_char_update_val(rem_dur, &new_val);
+
+
+            *(write->status) = HAP_STATUS_SUCCESS;
+		}
+		else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_REMAINING_DURATION))
+	    {
+	        hap_char_update_val(write->hc, &(write->val));
+            *(write->status) = HAP_STATUS_SUCCESS;
+		}
         /*else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ROTATION_DIRECTION))
         {
             if (write->val.i > 1)
@@ -210,7 +307,7 @@ static int sprinkler_write(hap_write_data_t write_data[], int count,
 static void sprinkler_thread_entry(void *p)
 {
     hap_acc_t *accessory;
-    hap_serv_t *service;
+    //hap_serv_t *service;
 
     /* Configure HomeKit core to make the Accessory name (and thus the WAC SSID) unique,
      * instead of the default configuration wherein only the WAC SSID is made unique.
@@ -248,8 +345,10 @@ static void sprinkler_thread_entry(void *p)
     hap_acc_add_wifi_transport_service(accessory, 0);
 
     /* Create the Fan Service. Include the "name" since this is a user visible service  */
-    service = hap_serv_irrigation_system_create(0, 0, 0);
+    service = hap_serv_valve_create(0, 0, 1);
     hap_serv_add_char(service, hap_char_name_create("My Sprinkler"));
+    hap_serv_add_char(service, hap_char_set_duration_create(1000));
+    hap_serv_add_char(service, hap_char_remaining_duration_create(1000));
 
     /* Set the write callback for the service */
     hap_serv_set_write_cb(service, sprinkler_write);
@@ -267,9 +366,9 @@ static void sprinkler_thread_entry(void *p)
     hap_fw_upgrade_config_t ota_config = {
         .server_cert_pem = server_cert,
     };
-    service = hap_serv_fw_upgrade_create(&ota_config);
+    hap_serv_t *fwservice = hap_serv_fw_upgrade_create(&ota_config);
     /* Add the service to the Accessory Object */
-    hap_acc_add_serv(accessory, service);
+    hap_acc_add_serv(accessory, fwservice);
 
     /* Add the Accessory to the HomeKit Database */
     hap_add_accessory(accessory);
