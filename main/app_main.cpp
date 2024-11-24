@@ -42,10 +42,14 @@
 #include <app_wifi.h>
 #include <app_hap_setup_payload.h>
 
+#include <SSD1306I2C.h>
+
 /*  Required for server verification during OTA, PEM format as string  */
 char server_cert[] = {};
 
 static hap_serv_t *service;
+
+SSD1306I2C display(0x3C, 5, 4, GEOMETRY_128_64);
 
 static const char *TAG = "HAP Sprinkler";
 
@@ -85,7 +89,7 @@ static void reset_to_factory_handler(void* arg)
  */
 static void reset_key_init(uint32_t key_gpio_pin)
 {
-    button_handle_t handle = iot_button_create(key_gpio_pin, BUTTON_ACTIVE_LOW);
+    button_handle_t handle = iot_button_create((gpio_num_t)key_gpio_pin, BUTTON_ACTIVE_LOW);
     iot_button_add_on_release_cb(handle, RESET_NETWORK_BUTTON_TIMEOUT, reset_network_handler, NULL);
     iot_button_add_on_press_cb(handle, RESET_TO_FACTORY_BUTTON_TIMEOUT, reset_to_factory_handler, NULL);
 }
@@ -106,7 +110,8 @@ static int sprinkler_identify(hap_acc_t *ha)
  */
 static void sprinkler_hap_event_handler(void* arg, esp_event_base_t event_base, int32_t event, void *data)
 {
-    switch(event) {
+    switch(event)
+    {
         case HAP_EVENT_PAIRING_STARTED :
             ESP_LOGI(TAG, "Pairing Started");
             break;
@@ -127,13 +132,15 @@ static void sprinkler_hap_event_handler(void* arg, esp_event_base_t event_base, 
         case HAP_EVENT_CTRL_DISCONNECTED :
             ESP_LOGI(TAG, "Controller %s Disconnected", (char *)data);
             break;
-        case HAP_EVENT_ACC_REBOOTING : {
-            char *reason = (char *)data;
-            ESP_LOGI(TAG, "Accessory Rebooting (Reason: %s)",  reason ? reason : "null");
+        case HAP_EVENT_ACC_REBOOTING :
+            {
+	            char *reason = (char *)data;
+	            ESP_LOGI(TAG, "Accessory Rebooting (Reason: %s)",  reason ? reason : "null");
+			}
             break;
         case HAP_EVENT_PAIRING_MODE_TIMED_OUT :
             ESP_LOGI(TAG, "Pairing Mode timed out. Please reboot the device.");
-        }
+            break;
         default:
             /* Silently ignore unknown events */
             break;
@@ -193,6 +200,18 @@ static int sprinkler_read(hap_char_t *hc, hap_status_t *status_code, void *serv_
         *status_code = HAP_STATUS_SUCCESS;
          cur_val = hap_char_get_val(hc);
 		ESP_LOGI(TAG, "Valve Type: %lu", cur_val->u);
+	}
+	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_WATER_LEVEL))
+    {
+        *status_code = HAP_STATUS_SUCCESS;
+         cur_val = hap_char_get_val(hc);
+		ESP_LOGI(TAG, "Water level: %f", cur_val->f);
+	}
+	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_CURRENT_RELATIVE_HUMIDITY))
+    {
+        *status_code = HAP_STATUS_SUCCESS;
+        cur_val = hap_char_get_val(hc);
+		ESP_LOGI(TAG, "Humidty: %f", cur_val->f);
 	}
    /* if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ROTATION_DIRECTION)) {
 
@@ -281,6 +300,11 @@ static int sprinkler_write(hap_write_data_t write_data[], int count,
 	        hap_char_update_val(write->hc, &(write->val));
             *(write->status) = HAP_STATUS_SUCCESS;
 		}
+		else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_WATER_LEVEL))
+	    {
+	        hap_char_update_val(write->hc, &(write->val));
+            *(write->status) = HAP_STATUS_SUCCESS;
+		}
         /*else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ROTATION_DIRECTION))
         {
             if (write->val.i > 1)
@@ -324,15 +348,15 @@ static void sprinkler_thread_entry(void *p)
      * the mandatory services internally
      */
     hap_acc_cfg_t cfg = {
-        .name = "Sprinkler",
-        .manufacturer = "Gormack",
-        .model = "S1",
-        .serial_num = "001122334455",
-        .fw_rev = "1.0.0",
+        .name = (char*)"Sprinkler",
+        .model = (char*)"S1",
+        .manufacturer = (char*)"Gormack",
+        .serial_num = (char*)"001122334455",
+        .fw_rev = (char*)"1.0.0",
         .hw_rev = NULL,
-        .pv = "1.0.0",
-        .identify_routine = sprinkler_identify,
+        .pv = (char*)"1.0.0",
         .cid = HAP_CID_SPRINKLER,
+        .identify_routine = sprinkler_identify,
     };
     /* Create accessory object */
     accessory = hap_acc_create(&cfg);
@@ -345,10 +369,14 @@ static void sprinkler_thread_entry(void *p)
     hap_acc_add_wifi_transport_service(accessory, 0);
 
     /* Create the Fan Service. Include the "name" since this is a user visible service  */
-    service = hap_serv_valve_create(0, 0, 1);
+    /*service = hap_serv_valve_create(0, 0, 1);
     hap_serv_add_char(service, hap_char_name_create("My Sprinkler"));
     hap_serv_add_char(service, hap_char_set_duration_create(1000));
-    hap_serv_add_char(service, hap_char_remaining_duration_create(1000));
+    hap_serv_add_char(service, hap_char_remaining_duration_create(1000));*/
+
+	service = hap_serv_humidity_sensor_create(50.5);
+	hap_serv_add_char(service, hap_char_name_create((char*)"Water Level"));
+    hap_serv_add_char(service, hap_char_water_level_create(75));
 
     /* Set the write callback for the service */
     hap_serv_set_write_cb(service, sprinkler_write);
@@ -425,7 +453,7 @@ static void sprinkler_thread_entry(void *p)
     vTaskDelete(NULL);
 }
 
-void app_main()
+extern "C" void app_main()
 {
     xTaskCreate(sprinkler_thread_entry, SPRINKLER_TASK_NAME, SPRINKLER_TASK_STACKSIZE, NULL, SPRINKLER_TASK_PRIORITY, NULL);
 }
