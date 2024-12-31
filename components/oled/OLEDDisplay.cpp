@@ -32,9 +32,23 @@
 
 #include <string>
 #include <cstring>
-//#include <stdlib>
+#include <iostream>
+#include <sstream>
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
+
+const char *OLEDDisplay::icon_types[] =
+{
+    "115700000011101000111111110111101111111",
+    "115701110100011000011111110111101111111",
+    "21127000000000000001110000000010001000000010001111110010001001010001110000010000000000000",
+    "11770000000000111000100000100110010100001010100000000",
+    "11770000000000000000000000000110000100000010100000000",
+    "11770000000000000000000000000000000000000000100000000",
+    "11770100010100100110111011001001010101000010000001000",
+    "11770001000001110001111101111111011111001101100110110",
+    "21127000000000000011110011110100001100001100001100001100001100001011110011110000000000000"
+};
 
 OLEDDisplay::~OLEDDisplay()
 {
@@ -103,6 +117,7 @@ void OLEDDisplay::end()
 
 void OLEDDisplay::resetDisplay(void)
 {
+	ESP_LOGI("OLEDDisplay", "Reset");
 	clear();
 	#ifdef OLEDDISPLAY_DOUBLE_BUFFER
 	memset(buffer_back, 1, displayBufferSize);
@@ -505,6 +520,56 @@ void OLEDDisplay::drawXbm(int16_t xMove, int16_t yMove, int16_t width, int16_t h
 				setPixel(xMove + x, yMove + y);
 			}
 		}
+	}
+}
+
+int OLEDDisplay::icons_StringToNumber(const std::string &Text)
+{
+    std::istringstream ss(Text);
+	int result;
+	return ss >> result ? result : 0;
+}
+
+
+void OLEDDisplay::drawIcon(Icon icon, int xpos, int ypos)
+{
+	std::string iconValue = icon_types[icon];
+	int sizeDigetsx = icons_StringToNumber(iconValue.substr(0,1));
+	int sizeDigetsy = icons_StringToNumber(iconValue.substr(1,1));
+	int width = icons_StringToNumber(iconValue.substr(2,sizeDigetsx));
+	int height = icons_StringToNumber(iconValue.substr(sizeDigetsx+2,sizeDigetsy));
+
+	for(int y = 0; y < height; ++y)
+	{
+		std::string line = iconValue.substr(((sizeDigetsx+sizeDigetsy+2)+(y*width)), width);
+
+		for (int x = 0; x < width; ++x)
+		{
+			int populated = icons_StringToNumber(line.substr(x, 1));
+			//cout << icons_StringToNumber<int>(line.substr(x, 1));
+			if (populated == 1)
+				setPixel(xpos + x, ypos + y);
+
+		}
+	}
+	//cout << '\n';
+}
+
+void OLEDDisplay::drawBitmap(int16_t x, int16_t y, const uint8_t* bitmap, int16_t w, int16_t h)
+{
+	int16_t byteWidth = (w + 7) / 8;
+	uint8_t b = 0;
+	for (int16_t j = 0; j < h; j++, y++)
+	{
+		for (int16_t i = 0; i < w; i++)
+		{
+			if (i & 7)
+				b <<= 1;
+            else
+                b = bitmap[j * byteWidth + i / 8];
+            if (b & 0x80)
+                setPixel(x + i, y);
+	    }
 	}
 }
 

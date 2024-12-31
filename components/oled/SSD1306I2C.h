@@ -87,6 +87,8 @@ public:
 	bool display(void);
 
 private:
+	bool sendPageData(const uint8_t* buf, size_t width);
+
 	bool sendCommand(uint8_t command);
 
 	bool sendCommand(uint8_t command, uint8_t *pDat, uint8_t len);

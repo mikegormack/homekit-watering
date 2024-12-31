@@ -72,7 +72,7 @@ bool SSD1306I2C::display(void)
 {
 	//ESP_LOGI("SSD1306Wire", "Display");
 	uint8_t x_offset = (128 - this->width()) / 2;
-	#ifdef OLEDDISPLAY_DOUBLE_BUFFER
+#ifdef OLEDDISPLAY_DOUBLE_BUFFER
 
 	uint8_t minBoundY = UINT8_MAX;
 	uint8_t maxBoundY = 0;
@@ -104,32 +104,34 @@ bool SSD1306I2C::display(void)
 	// holdes true for all values of pos
 	if (minBoundY == UINT8_MAX) return true;
 
+	// set addressing bounds (horizontal mode)
 	uint8_t cmd1[] = { (uint8_t)(x_offset + minBoundX), (uint8_t)(x_offset + maxBoundX) };
 	RETURN_ERR_CHECK_BOOL(sendCommand(COLUMNADDR, cmd1, sizeof(cmd1)), NULL);
-	//ESP_LOGI("SSD1306Wire", "Set x %d, %d", x_offset + minBoundX, x_offset + maxBoundX);
+	ESP_LOGI("SSD1306Wire", "Set x %d, %d", x_offset + minBoundX, x_offset + maxBoundX);
 
 	uint8_t cmd2[] = { minBoundY, maxBoundY };
 	RETURN_ERR_CHECK_BOOL(sendCommand(PAGEADDR, cmd2, sizeof(cmd2)), NULL);
-	//ESP_LOGI("SSD1306Wire", "Set y %d, %d", minBoundY, maxBoundY);
+	ESP_LOGI("SSD1306Wire", "Set y %d, %d", minBoundY, maxBoundY);
 
-	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-	RETURN_ERR_CHECK_BOOL(i2c_master_start(cmd) == ESP_OK, cmd);
-	RETURN_ERR_CHECK_BOOL(i2c_master_write_byte(cmd, (this->_address << 1) | I2C_MASTER_WRITE, true) == ESP_OK, cmd);
-	RETURN_ERR_CHECK_BOOL(i2c_master_write_byte(cmd, OLED_CONTROL_BYTE_DATA_STREAM, true) == ESP_OK, cmd);
+	// write each page up to specified width (horizontal addressing mode)
+	int page = minBoundY;
+	int width = maxBoundX - minBoundX + 1;
 
-	for (y = minBoundY; y <= maxBoundY; y++)
+	while (page <= maxBoundY)
 	{
-		for (x = minBoundX; x <= maxBoundX; x++)
+		// calc the index into the buffer
+		int index = (page * this->width()) + minBoundX;
+
+		ESP_LOGI("SSD1306I2C", "Write to page %d width %d index %d", page, width, index);
+		if (sendPageData(&buffer[index], width) == false)
 		{
-			RETURN_ERR_CHECK_BOOL(i2c_master_write_byte(cmd, buffer[x + y * this->width()], true) == ESP_OK, cmd);
+			return false;
 		}
+		ESP_LOGI("SSD1306I2C", "Write ok");
+		page++;
 	}
 
-	RETURN_ERR_CHECK_BOOL(i2c_master_stop(cmd) == ESP_OK, cmd);
-	RETURN_ERR_CHECK_BOOL(i2c_master_cmd_begin(I2C_NUM_0, cmd, 10 / portTICK_PERIOD_MS) == ESP_OK, cmd);
-
-	i2c_cmd_link_delete(cmd);
-	#else
+#else
 
 	uint8_t cmd1[] = { x_offset, x_offset + (this->width() - 1) };
 	RETURN_ERR_CHECK_BOOL(sendCommand(COLUMNADDR, cmd1, sizeof(cmd1)));
@@ -158,8 +160,55 @@ bool SSD1306I2C::display(void)
 		i--;
 		Wire.endTransmission();
 	}
-	#endif
+#endif
 	return true;
+}
+
+bool SSD1306I2C::sendPageData(const uint8_t* buf, size_t width)
+{
+	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+	esp_err_t ret = ESP_OK;
+	ret = i2c_master_start(cmd);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE("SSD1306I2C", "master_start err: %d", ret);
+		goto error;
+	}
+	ret = i2c_master_write_byte(cmd, (this->_address << 1) | I2C_MASTER_WRITE, true);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE("SSD1306I2C", "master_write_byte addr err: %d", ret);
+		goto error;
+	}
+	ret = i2c_master_write_byte(cmd, OLED_CONTROL_BYTE_DATA_STREAM, true);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE("SSD1306I2C", "master_write_byte cmd err: %d", ret);
+		goto error;
+	}
+	ret = i2c_master_write(cmd, buf, width, true);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE("SSD1306I2C", "master_write err: %d", ret);
+		goto error;
+	}
+	ret = i2c_master_stop(cmd);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE("SSD1306I2C", "master_stop err: %d", ret);
+		goto error;
+	}
+	ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 50 / portTICK_PERIOD_MS);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE("SSD1306I2C", "i2c_master_cmd_begin: %d", ret);
+		goto error;
+	}
+	i2c_cmd_link_delete(cmd);
+	return true;
+error:
+	i2c_cmd_link_delete(cmd);
+	return false;
 }
 
 uint8_t SSD1306I2C::max(uint8_t a, uint8_t b)

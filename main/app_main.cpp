@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <memory>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_event.h>
@@ -42,6 +43,10 @@
 #include <app_wifi.h>
 #include <app_hap_setup_payload.h>
 
+#include "icons_macros.h"
+
+#include <ui.h>
+
 #include <SSD1306I2C.h>
 
 /*  Required for server verification during OTA, PEM format as string  */
@@ -50,6 +55,8 @@ char server_cert[] = {};
 static hap_serv_t *service;
 
 SSD1306I2C display(0x3C, 5, 4, GEOMETRY_128_64);
+
+std::unique_ptr<ui> ui_p;
 
 static const char *TAG = "HAP Sprinkler";
 
@@ -327,9 +334,47 @@ static int sprinkler_write(hap_write_data_t write_data[], int count,
     return ret;
 }
 
+
+
+
 /*The main thread for handling the Fan Accessory */
 static void sprinkler_thread_entry(void *p)
 {
+	if (display.init())
+	{
+		ui_p = std::make_unique<ui>(display);
+
+		display.setContrast(255);
+		display.flipScreenVertically();
+		display.setLogBuffer(5, 30);
+
+		ui_p->homescreen();
+		//display.resetDisplay();
+		//display.setColor(BLACK);
+
+
+		/*display.setColor(WHITE);
+
+		//display.fillCircle(20, 20, 10);
+		//display.setColor(INVERSE);
+		display.drawString(0, 0, "Test");
+
+		display.setFont(ArialMT_Plain_16);
+		display.drawString(50, 40, "Test");
+
+
+		display.setFont(ArialMT_Plain_24);
+
+		display.drawString(50, 20, "Test");
+
+		display.drawBitmap(0, 40, wifi1_icon16x16, 16, 16);
+		//display.drawString(0, 20, "trev mc farkleberry");
+display.fillRect(30,40, 20, 20);
+		display.display();*/
+
+	}
+
+
     hap_acc_t *accessory;
     //hap_serv_t *service;
 

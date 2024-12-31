@@ -1,10 +1,11 @@
 {
 	"C_Cpp.intelliSenseEngine": "default",
 	"idf.adapterTargetName": "esp32",
-	"idf.portWin": "COM10",
+	"idf.portWin": "COM6",
 	"files.associations": {
 		"ssd1306i2c.h": "c",
 		"esp_event.h": "c",
-		"app_hap_setup_payload.h": "c"
+		"app_hap_setup_payload.h": "c",
+		"iosfwd": "cpp"
 	}
 }

@@ -18,8 +18,13 @@ set(incl
 	${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+set (srcs
+	app_main.cpp
+	ui.cpp
+)
+
 idf_component_register(
-	SRCS ./app_main.cpp
+	SRCS ${srcs}
 	REQUIRES ${req}
 	INCLUDE_DIRS ${incl}
 )

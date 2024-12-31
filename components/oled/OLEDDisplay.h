@@ -128,6 +128,8 @@ enum OLEDDISPLAY_GEOMETRY
 
 typedef uint8_t (*FontTableLookupFunction)(const uint8_t ch);
 
+enum Icon { locked = 0, unlocked, key, wifi, wifimed, wifilow, beacon, house, chainlink};
+
 class OLEDDisplay
 {
 private:
@@ -198,6 +200,10 @@ public:
 
 	// Draw a XBM
 	void drawXbm(int16_t x, int16_t y, int16_t width, int16_t height, const uint8_t *xbm);
+
+	void drawIcon(Icon icon, int xpos, int ypos);
+
+	void drawBitmap(int16_t x, int16_t y, const uint8_t* bitmap, int16_t w, int16_t h);
 
 	/* Text functions */
 
@@ -312,6 +318,8 @@ protected:
 	uint16_t   logBufferMaxLines               = 0;
 	char      *logBuffer                       = NULL;
 
+	static const char *icon_types[];
+
 	// Send a command to the display (low level function)
 	virtual bool sendCommand(uint8_t com)
 	{
@@ -366,6 +374,8 @@ protected:
 
 		return (uint8_t) 0; // otherwise: return zero, if character has to be ignored
 	};
+
+	int icons_StringToNumber(const std::string &Text);
 };
 
 #endif
