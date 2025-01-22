@@ -31,16 +31,14 @@
 #include "OLEDDisplay.h"
 
 #include <driver/i2c.h>
-#include "SSD1306I2C.h"
-#include "esp_log.h"
+#include <SSD1306I2C.h>
+#include <esp_log.h>
 
-SSD1306I2C::SSD1306I2C(uint8_t _address, uint8_t _sda, uint8_t _scl, OLEDDISPLAY_GEOMETRY g)
+SSD1306I2C::SSD1306I2C(uint8_t address, i2c_port_t i2c_port, OLEDDISPLAY_GEOMETRY g) :
+	_address(address),
+	_i2c_port(i2c_port)
 {
 	setGeometry(g);
-
-	this->_address = _address;
-	this->_sda = _sda;
-	this->_scl = _scl;
 }
 
 SSD1306I2C::~SSD1306I2C()
@@ -50,21 +48,6 @@ SSD1306I2C::~SSD1306I2C()
 
 bool SSD1306I2C::connect()
 {
-	esp_err_t ret = ESP_OK;
-	i2c_config_t i2c_config =
-	{
-		.mode = I2C_MODE_MASTER,
-		.sda_io_num = this->_sda,
-		.scl_io_num = this->_scl,
-		.sda_pullup_en = GPIO_PULLUP_ENABLE,
-		.scl_pullup_en = GPIO_PULLUP_ENABLE,
-		.master = {.clk_speed = 400000},
-		.clk_flags = 0
-	};
-	ret = i2c_param_config(I2C_NUM_0, &i2c_config);
-	if (ret != ESP_OK) return false;
-	ret = i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
-	if (ret != ESP_OK) return false;
 	return true;
 }
 

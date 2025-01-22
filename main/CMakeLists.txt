@@ -21,6 +21,7 @@ set(incl
 set (srcs
 	app_main.cpp
 	ui.cpp
+	homeScreen.cpp
 )
 
 idf_component_register(

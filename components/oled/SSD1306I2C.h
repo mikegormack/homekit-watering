@@ -32,7 +32,7 @@
 #define SSD1306Wire_h
 
 #include "OLEDDisplay.h"
-
+#include <driver/i2c.h>
 
 // Control byte
 #define OLED_CONTROL_BYTE_CMD_SINGLE    0x80
@@ -74,11 +74,10 @@ class SSD1306I2C : public OLEDDisplay
 {
 private:
 	uint8_t             _address;
-	uint8_t             _sda;
-	uint8_t             _scl;
+	i2c_port_t          _i2c_port;
 
 public:
-	SSD1306I2C(uint8_t _address, uint8_t _sda, uint8_t _scl, OLEDDISPLAY_GEOMETRY g = GEOMETRY_128_64);
+	SSD1306I2C(uint8_t _address, i2c_port_t i2c_port, OLEDDISPLAY_GEOMETRY g = GEOMETRY_128_64);
 
 	~SSD1306I2C();
 

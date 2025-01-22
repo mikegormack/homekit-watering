@@ -33,6 +33,8 @@
 #include <esp_event.h>
 #include <esp_log.h>
 
+#include <driver/i2c.h>
+
 #include <hap.h>
 #include <hap_apple_servs.h>
 #include <hap_apple_chars.h>
@@ -43,8 +45,6 @@
 #include <app_wifi.h>
 #include <app_hap_setup_payload.h>
 
-#include "icons_macros.h"
-
 #include <ui.h>
 
 #include <SSD1306I2C.h>
@@ -54,8 +54,7 @@ char server_cert[] = {};
 
 static hap_serv_t *service;
 
-SSD1306I2C display(0x3C, 5, 4, GEOMETRY_128_64);
-
+std::unique_ptr<SSD1306I2C> disp_p;
 std::unique_ptr<ui> ui_p;
 
 static const char *TAG = "HAP Sprinkler";
@@ -340,15 +339,39 @@ static int sprinkler_write(hap_write_data_t write_data[], int count,
 /*The main thread for handling the Fan Accessory */
 static void sprinkler_thread_entry(void *p)
 {
-	if (display.init())
+	esp_err_t ret = ESP_OK;
+	i2c_config_t i2c_config =
 	{
-		ui_p = std::make_unique<ui>(display);
+		.mode = I2C_MODE_MASTER,
+		.sda_io_num = 5,
+		.scl_io_num = 4,
+		.sda_pullup_en = GPIO_PULLUP_ENABLE,
+		.scl_pullup_en = GPIO_PULLUP_ENABLE,
+		.master = {.clk_speed = 400000},
+		.clk_flags = 0
+	};
+	ret = i2c_param_config(I2C_NUM_0, &i2c_config);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE(TAG, "i2c param failed %d", ret);
+	}
+	ret = i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE(TAG, "i2c driver install failed %d", ret);
+	}
 
-		display.setContrast(255);
-		display.flipScreenVertically();
-		display.setLogBuffer(5, 30);
+	disp_p = std::make_unique<SSD1306I2C>(0x3C, I2C_NUM_0, GEOMETRY_128_64);
 
-		ui_p->homescreen();
+	if (disp_p->init())
+	{
+
+
+		disp_p->setContrast(255);
+		disp_p->flipScreenVertically();
+		disp_p->setLogBuffer(5, 30);
+		ui_p = std::make_unique<ui>(*disp_p);
+		//ui_p->homescreen();
 		//display.resetDisplay();
 		//display.setColor(BLACK);
 
