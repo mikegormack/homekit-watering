@@ -48,6 +48,7 @@
 #include <ui.h>
 
 #include <SSD1306I2C.h>
+#include <MCP23017.h>
 
 /*  Required for server verification during OTA, PEM format as string  */
 char server_cert[] = {};
@@ -56,6 +57,7 @@ static hap_serv_t *service;
 
 std::unique_ptr<SSD1306I2C> disp_p;
 std::unique_ptr<ui> ui_p;
+std::shared_ptr<MCP23017> ioexp_p;
 
 static const char *TAG = "HAP Sprinkler";
 
@@ -71,6 +73,9 @@ static const char *TAG = "HAP Sprinkler";
 
 /* The button "Boot" will be used as the Reset button for the example */
 #define RESET_GPIO  GPIO_NUM_0
+
+#define IO_RES_PIN  25
+#define IO_INT_PIN  26
 
 /**
  * @brief The network reset button callback handler.
@@ -95,9 +100,9 @@ static void reset_to_factory_handler(void* arg)
  */
 static void reset_key_init(uint32_t key_gpio_pin)
 {
-    button_handle_t handle = iot_button_create((gpio_num_t)key_gpio_pin, BUTTON_ACTIVE_LOW);
+    /*button_handle_t handle = iot_button_create((gpio_num_t)key_gpio_pin, BUTTON_ACTIVE_LOW);
     iot_button_add_on_release_cb(handle, RESET_NETWORK_BUTTON_TIMEOUT, reset_network_handler, NULL);
-    iot_button_add_on_press_cb(handle, RESET_TO_FACTORY_BUTTON_TIMEOUT, reset_to_factory_handler, NULL);
+    iot_button_add_on_press_cb(handle, RESET_TO_FACTORY_BUTTON_TIMEOUT, reset_to_factory_handler, NULL);*/
 }
 
 /* Mandatory identify routine for the accessory.
@@ -333,8 +338,25 @@ static int sprinkler_write(hap_write_data_t write_data[], int count,
     return ret;
 }
 
+static bool ioexp_init()
+{
+	ioexp_p = std::make_shared<MCP23017>(I2C_NUM_0, MCP23017_BASE_ADDRESS, IO_RES_PIN, IO_INT_PIN, -1, true);
+	if (ioexp_p->init() == false)
+		return false;
+	if (ioexp_p->setIODIR(0x0F00) == false)
+		return false;
+	if (ioexp_p->setPullUp(0x0F00) == false)
+		return false;
+	if (ioexp_p->setGPIO(0x0000) == false)
+		return false;
+	if (ioexp_p->setIntDefaultEnable(0x0000) == false)
+		return false;
+	if (ioexp_p->setIntEna(0x0F00) == false)
+		return false;
 
-
+	ioexp_p->regDump();
+	return true;
+}
 
 /*The main thread for handling the Fan Accessory */
 static void sprinkler_thread_entry(void *p)
@@ -363,6 +385,15 @@ static void sprinkler_thread_entry(void *p)
 
 	disp_p = std::make_unique<SSD1306I2C>(0x3C, I2C_NUM_0, GEOMETRY_128_64);
 
+	if (ioexp_init() == false)
+	{
+		ESP_LOGE(TAG, "i2c init failed");
+	}
+	else
+	{
+		ESP_LOGI(TAG, "i2c init ok");
+	}
+
 	if (disp_p->init())
 	{
 
@@ -370,7 +401,7 @@ static void sprinkler_thread_entry(void *p)
 		disp_p->setContrast(255);
 		disp_p->flipScreenVertically();
 		disp_p->setLogBuffer(5, 30);
-		ui_p = std::make_unique<ui>(*disp_p);
+		ui_p = std::make_unique<ui>(*disp_p, ioexp_p);
 		//ui_p->homescreen();
 		//display.resetDisplay();
 		//display.setColor(BLACK);

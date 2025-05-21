@@ -1,92 +1,303 @@
 
 #include <driver/i2c.h>
+#include <driver/gpio.h>
+
+#include <freertos/queue.h>
 
 #include <esp_log.h>
 
+#include <functional>
+
 #include <MCP23017.h>
 
-MCP23017::MCP23017(i2c_port_t i2c_port, uint8_t address) :
-	m_i2c_port(i2c_port),
-	m_address(address)
-{
+#define INTTERUPT_QUEUE_SIZE    10
 
+static const char *TAG = "MCP23017";
+
+MCP23017::MCP23017(i2c_port_t i2c_port, uint8_t address, int res_pin, int inta_pin, int intb_pin, bool int_mirror) :
+	m_i2c_port(i2c_port),
+	m_address(address),
+	m_res_pin(res_pin),
+	m_int_mirror(int_mirror)
+{
+	if (inta_pin < -1 || inta_pin > 39)
+	{
+		ESP_LOGE(TAG, "invalid inta_pin val %d", inta_pin);
+		inta_pin = -1;
+	}
+	if (inta_pin < -1 || inta_pin > 39)
+	{
+		ESP_LOGE(TAG, "invalid inta_pin val %d", inta_pin);
+		inta_pin = -1;
+	}
+	if (intb_pin < -1 || intb_pin > 39)
+	{
+		ESP_LOGE(TAG, "invalid intb_pin val %d", intb_pin);
+		intb_pin = -1;
+	}
+	m_inta_ctx.gpio = inta_pin;
+	m_inta_ctx.drv = this;
+	m_intb_ctx.gpio = intb_pin;
+	m_intb_ctx.drv = this;
 }
 
 MCP23017::~MCP23017()
 {
+	if (m_int_evt_queue != nullptr)
+		vQueueDelete(m_int_evt_queue);
+	// exit task
 }
 
-//helper function to replace bitRead function from Arduino library
-bool MCP23017::bitRead(uint8_t num, uint8_t index)
+bool MCP23017::init()
 {
-    return (num >> index) & 1;
+	bool success = true;
+	esp_err_t ret = ESP_OK;
+
+	reset();
+
+	// config reset pin
+	if (m_res_pin != -1)
+	{
+		gpio_config_t io_conf =
+		{
+			.pin_bit_mask = (1ULL << m_res_pin),
+			.mode = GPIO_MODE_OUTPUT,
+			.pull_up_en = GPIO_PULLUP_DISABLE,
+			.pull_down_en = GPIO_PULLDOWN_DISABLE,
+			.intr_type = GPIO_INTR_DISABLE
+		};
+		ret = gpio_config(&io_conf);
+		if (ret != ESP_OK)
+		{
+			ESP_LOGE(TAG, "io res config fail %d", ret);
+			success = false;
+		}
+	}
+	// esp interrupt config
+	if (m_inta_ctx.gpio != -1 || m_intb_ctx.gpio != -1)
+	{
+		gpio_install_isr_service(0);
+		m_int_evt_queue = xQueueCreate(INTTERUPT_QUEUE_SIZE, sizeof(int));
+		if (m_int_evt_queue == nullptr)
+		{
+			ESP_LOGE(TAG, "queue init fail");
+			success = false;
+		}
+		else
+		{
+			BaseType_t result = xTaskCreate(intTask, "mcp23017_task", 4096, this, 10, NULL);
+			if (result == pdFAIL)
+			{
+				ESP_LOGE(TAG, "task alloc fail");
+				success = false;
+			}
+		}
+	}
+	if (m_inta_ctx.gpio != -1)
+	{
+		success = success && configIntPin(&m_inta_ctx);
+	}
+	if (m_intb_ctx.gpio != -1)
+	{
+		success = success && configIntPin(&m_intb_ctx);
+	}
+	uint8_t iocon = m_int_mirror ? IOCON_MIRROR : 0;
+	success = success && writeRegister(MCP23017_IOCONA, iocon);
+
+	return success;
 }
 
-
-//helper function to replace bitWrite function from Arduino library
-void MCP23017::bitWrite(uint8_t &var, uint8_t index, uint8_t bit)
+void MCP23017::uninit()
 {
-    uint new_bit = 1 << index;
-    if(bit)
-    {
-        var = var | new_bit;
-    }
-    else {
-        new_bit = ~new_bit;
-        var = var & new_bit;
-    }
+
 }
 
-
-//open I2C communication
-bool MCP23017::openI2C()
+bool MCP23017::reset()
 {
-    char fileNameBuffer[32];
-    sprintf(fileNameBuffer,"/dev/i2c-%d", kI2CBus);
-    kI2CFileDescriptor = open(fileNameBuffer, O_RDWR);
-    if (kI2CFileDescriptor < 0) {
-        // Could not open the file
-       error = errno ;
-       return false ;
-    }
-    if (ioctl(kI2CFileDescriptor, I2C_SLAVE, kI2CAddress) < 0) {
-        // Could not open the device on the bus
-        error = errno ;
-        return false ;
-    }
-    // set defaults!
-	// all inputs on port A and B
-	writeRegister(MCP23017_IODIRA,0b11111110);
-	writeRegister(MCP23017_IODIRB,0b11111110);
-    return true ;
+	esp_err_t ret = ESP_OK;
+	if (m_res_pin == -1)
+	{
+
+	}
+
+	gpio_num_t io_res_pin = (gpio_num_t)m_res_pin;
+	ret = gpio_set_level(io_res_pin, 0);
+	if (ret != ESP_OK)
+		return false;
+	vTaskDelay(pdMS_TO_TICKS(10));
+	ret = gpio_set_level(io_res_pin, 1);
+	vTaskDelay(pdMS_TO_TICKS(10));
+	return (ret == ESP_OK);
 }
 
-//close I2C communication
-void MCP23017::closeI2C()
+void MCP23017::setEventCallback(std::function<void(uint16_t, uint16_t, void*)> callback, void* user_data)
 {
-    if (kI2CFileDescriptor > 0) {
-        close(kI2CFileDescriptor);
-        // WARNING - This is not quite right, need to check for error first
-        kI2CFileDescriptor = -1 ;
-    }
+	m_callback = callback;
+	m_user_data = user_data;
+}
+
+bool MCP23017::configIntPin(struct mcp23017_int_ctx_s* ctx)
+{
+	bool success = true;
+	esp_err_t ret = ESP_OK;
+	gpio_config_t io_conf =
+	{
+		.pin_bit_mask = (1ULL << ctx->gpio),
+		.mode = GPIO_MODE_INPUT,
+		.pull_up_en = GPIO_PULLUP_DISABLE,
+		.pull_down_en = GPIO_PULLDOWN_DISABLE,
+		.intr_type = GPIO_INTR_NEGEDGE
+	};
+	ret = gpio_config(&io_conf);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE(TAG, "int (%d) config fail %d", ctx->gpio, ret);
+		success = false;
+	}
+	ret = gpio_isr_handler_add((gpio_num_t)ctx->gpio, isrHandler, ctx);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE(TAG, "int (%d) handler fail %d", ctx->gpio, ret);
+		success = false;
+	}
+	return success;
+}
+
+void IRAM_ATTR MCP23017::isrHandler(void *arg)
+{
+	mcp23017_int_ctx_s* ctx = static_cast<mcp23017_int_ctx_s*>(arg);
+	xQueueSendFromISR(ctx->drv->m_int_evt_queue, &ctx->gpio, NULL);
+}
+
+void MCP23017::intTask(void *arg)
+{
+	int gpio_num = 0;
+	MCP23017* ctx = (MCP23017*)arg;
+	while (1)
+	{
+		if (xQueueReceive(ctx->m_int_evt_queue, &gpio_num, portMAX_DELAY))
+		{
+			vTaskDelay(pdMS_TO_TICKS(2));
+		}
+		else
+		{
+			gpio_num = 0;
+		}
+		if (gpio_num > 0)
+		{
+			uint16_t flags = 0;
+			uint16_t cap = 0;
+			if (ctx->getIntFlag(&flags) && ctx->getIntCapture(&cap))
+			{
+				gpio_num = 0;
+				// read capture reg resets interrupt
+				if (ctx->m_callback != nullptr)
+					ctx->m_callback(flags, cap, ctx->m_user_data);
+			}
+		}
+		vTaskDelay(pdMS_TO_TICKS(5));
+	}
+}
+
+bool MCP23017::setIODIR(uint16_t iodir)
+{
+	return writeRegister16(MCP23017_IODIRA, iodir);
+}
+
+bool MCP23017::getIODIR(uint16_t* iodir)
+{
+	return readRegister16(MCP23017_IODIRA, iodir);
+}
+
+bool MCP23017::setGPIO(uint16_t gpio)
+{
+	return writeRegister16(MCP23017_OLATA, gpio);
+}
+
+bool MCP23017::getGPIO(uint16_t* gpio)
+{
+	return readRegister16(MCP23017_GPIOA, gpio);
+}
+
+bool MCP23017::setPullUp(uint16_t gpio)
+{
+	return writeRegister16(MCP23017_GPPUA, gpio);
+}
+
+bool MCP23017::getPullUp(uint16_t* gpio)
+{
+	return readRegister16(MCP23017_GPPUA, gpio);
+}
+
+bool MCP23017::setIntEna(uint16_t mask)
+{
+	return writeRegister16(MCP23017_GPINTENA, mask);
+}
+
+bool MCP23017::getIntEna(uint16_t* mask)
+{
+	return readRegister16(MCP23017_GPINTENA, mask);
+}
+
+bool MCP23017::setIntDefaultEnable(uint16_t enable)
+{
+	return writeRegister16(MCP23017_INTCONA, enable);
+}
+
+bool MCP23017::getIntDefaultEnable(uint16_t* enable)
+{
+	return readRegister16(MCP23017_INTCONA, enable);
+}
+
+bool MCP23017::setIntDefaultValue(uint16_t val)
+{
+	return writeRegister16(MCP23017_DEFVALA, val);
+}
+
+bool MCP23017::getIntDefaultValue(uint16_t* val)
+{
+	return readRegister16(MCP23017_DEFVALA, val);
+}
+
+bool MCP23017::getIntFlag(uint16_t* val)
+{
+	return readRegister16(MCP23017_INTFA, val);
+}
+
+bool MCP23017::getIntCapture(uint16_t* val)
+{
+	return readRegister16(MCP23017_INTCAPA, val);
 }
 
 
-
-/**
- * Bit number associated to a given Pin
- */
-uint8_t MCP23017::bitForPin(uint8_t pin){
-	return pin%8;
+void MCP23017::regDump()
+{
+	uint8_t temp = 0;
+	uint8_t i = 0;
+	for (i = 0x00; i <= 0x15; i++)
+	{
+		if (readRegister(i, &temp))
+		{
+			ESP_LOGI(TAG, "reg %x: %x", i, temp);
+		}
+		else
+		{
+			ESP_LOGI(TAG, "reg %x: fail", i);
+		}
+	}
 }
 
-/**
- * Register address, port dependent, for a given PIN
- */
-uint8_t MCP23017::regForPin(uint8_t pin, uint8_t portAaddr, uint8_t portBaddr){
-	return(pin<8) ?portAaddr:portBaddr;
+bool MCP23017::setIntPinConfig(bool mirror, bool open_drain, bool act_hi)
+{
+	uint8_t iocon = 0;
+	if (mirror)
+		iocon |= IOCON_MIRROR;
+	if (open_drain)
+		iocon |= IOCON_ODR;
+	if (act_hi)
+		iocon |= IOCON_INTPOL;
+	return writeRegister(MCP23017_IOCONA, 0);
 }
-
 
 bool MCP23017::readRegister(uint8_t reg_addr, uint8_t *val)
 {
@@ -101,7 +312,6 @@ bool MCP23017::readRegister(uint8_t reg_addr, uint8_t *val)
 		return true;
 	}
 }
-
 
 bool MCP23017::writeRegister(uint8_t reg_addr, uint8_t val)
 {
@@ -118,172 +328,34 @@ bool MCP23017::writeRegister(uint8_t reg_addr, uint8_t val)
 	}
 }
 
-/**
- * Helper to update a single bit of an A/B register.
- * - Reads the current register value
- * - Writes the new register value
- */
-void MCP23017::updateRegisterBit(uint8_t pin, uint8_t pValue, uint8_t portAaddr, uint8_t portBaddr) {
-	uint8_t regValue;
-	uint8_t regAddr=regForPin(pin,portAaddr,portBaddr);
-	uint8_t bit=bitForPin(pin);
-	regValue = readRegister(regAddr);
-
-	// set the value for the particular bit
-	bitWrite(regValue,bit,pValue);
-
-	writeRegister(regAddr,regValue);
-}
-
-/**
- * Sets the pin mode to either INPUT or OUTPUT
- */
-void MCP23017::pinMode(uint8_t p, uint8_t d) {
-	updateRegisterBit(p,(d==INPUT),MCP23017_IODIRA,MCP23017_IODIRB);
-}
-
-/**
- * Reads all 16 pins (port A and B) into a single 16 bits variable.
- */
-uint16_t MCP23017::readGPIOAB() {
-	uint16_t ba = 0;
-	uint8_t a;
-
-	// read the current GPIO output latches
-	writeByte(MCP23017_GPIOA);
-
-	a = readByte();
-	ba = readByte();
-	ba <<= 8;
-	ba |= a;
-
-	return ba;
-}
-
-/**
- * Read a single port, A or B, and return its current 8 bit value.
- * Parameter b should be 0 for GPIOA, and 1 for GPIOB.
- */
-uint8_t MCP23017::readGPIO(uint8_t b) {
-
-	// read the current GPIO output latches
-	if (b == 0)
-		writeByte(MCP23017_GPIOA);
-	else {
-		writeByte(MCP23017_GPIOB);
+bool MCP23017::readRegister16(uint8_t reg_addr, uint16_t *val)
+{
+	uint8_t data[2] = {0};
+	esp_err_t ret = i2c_master_write_read_device(m_i2c_port, m_address, &reg_addr, sizeof(reg_addr), data, sizeof(data), pdMS_TO_TICKS(10));
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE("MCP23017", "Read reg error: %d", ret);
+		return false;
 	}
-
-
-	uint8_t value = readByte();
-	return value;
-}
-
-/**
- * Writes all the pins in one go. This method is very useful if you are implementing a multiplexed matrix and want to get a decent refresh rate.
- */
-void MCP23017::writeGPIOAB(uint16_t ba) {
-
-	writeByte(MCP23017_GPIOA);
-	writeByte(ba & 0xFF);
-	writeByte(ba >> 8);
-
-}
-
-void MCP23017::digitalWrite(uint8_t pin, uint8_t d) {
-	uint8_t gpio;
-	uint8_t bit=bitForPin(pin);
-
-
-	// read the current GPIO output latches
-	uint8_t regAddr=regForPin(pin,MCP23017_OLATA,MCP23017_OLATB);
-	gpio = readRegister(regAddr);
-
-	// set the pin and direction
-	bitWrite(gpio,bit,d);
-
-	// write the new GPIO
-	regAddr=regForPin(pin,MCP23017_GPIOA,MCP23017_GPIOB);
-	writeRegister(regAddr,gpio);
-}
-
-void MCP23017::pullUp(uint8_t p, uint8_t d) {
-	updateRegisterBit(p,d,MCP23017_GPPUA,MCP23017_GPPUB);
-}
-
-bool MCP23017::digitalRead(uint8_t pin) {
-	uint8_t bit=bitForPin(pin);
-	uint8_t regAddr=regForPin(pin,MCP23017_GPIOA,MCP23017_GPIOB);
-	return (readRegister(regAddr) >> bit) & 0x1;
-}
-
-/**
- * Configures the interrupt system. both port A and B are assigned the same configuration.
- * Mirroring will OR both INTA and INTB pins.
- * Opendrain will set the INT pin to value or open drain.
- * polarity will set LOW or HIGH on interrupt.
- * Default values after Power On Reset are: (false, false, LOW)
- * If you are connecting the INTA/B pin to arduino 2/3, you should configure the interupt handling as FALLING with
- * the default configuration.
- */
-void MCP23017::setupInterrupts(uint8_t mirroring, uint8_t openDrain, uint8_t polarity){
-	// configure the port A
-	uint8_t ioconfValue=readRegister(MCP23017_IOCONA);
-	bitWrite(ioconfValue,6,mirroring);
-	bitWrite(ioconfValue,2,openDrain);
-	bitWrite(ioconfValue,1,polarity);
-	writeRegister(MCP23017_IOCONA,ioconfValue);
-
-	// Configure the port B
-	ioconfValue=readRegister(MCP23017_IOCONB);
-	bitWrite(ioconfValue,6,mirroring);
-	bitWrite(ioconfValue,2,openDrain);
-	bitWrite(ioconfValue,1,polarity);
-	writeRegister(MCP23017_IOCONB,ioconfValue);
-}
-
-/**
- * Set's up a pin for interrupt. uses arduino MODEs: CHANGE, FALLING, RISING.
- *
- * Note that the interrupt condition finishes when you read the information about the port / value
- * that caused the interrupt or you read the port itself. Check the datasheet can be confusing.
- *
- */
-void MCP23017::setupInterruptPin(uint8_t pin, uint8_t mode) {
-
-	// set the pin interrupt control (0 means change, 1 means compare against given value);
-	updateRegisterBit(pin,(mode!=CHANGE),MCP23017_INTCONA,MCP23017_INTCONB);
-	// if the mode is not CHANGE, we need to set up a default value, different value triggers interrupt
-
-	// In a RISING interrupt the default value is 0, interrupt is triggered when the pin goes to 1.
-	// In a FALLING interrupt the default value is 1, interrupt is triggered when pin goes to 0.
-	updateRegisterBit(pin,(mode==FALLING),MCP23017_DEFVALA,MCP23017_DEFVALB);
-
-	// enable the pin for interrupt
-	updateRegisterBit(pin,HIGH,MCP23017_GPINTENA,MCP23017_GPINTENB);
-
-}
-
-uint8_t MCP23017::getLastInterruptPin(){
-	uint8_t intf;
-
-	// try port A
-	intf=readRegister(MCP23017_INTFA);
-	for(int i=0;i<8;i++) if (bitRead(intf,i)) return i;
-
-	// try port B
-	intf=readRegister(MCP23017_INTFB);
-	for(int i=0;i<8;i++) if (bitRead(intf,i)) return i+8;
-
-	return MCP23017_INT_ERR;
-
-}
-uint8_t MCP23017::getLastInterruptPinValue(){
-	uint8_t intPin=getLastInterruptPin();
-	if(intPin!=MCP23017_INT_ERR){
-		uint8_t intcapreg=regForPin(intPin,MCP23017_INTCAPA,MCP23017_INTCAPB);
-		uint8_t bit=bitForPin(intPin);
-		return (readRegister(intcapreg)>>bit) & (0x01);
+	else
+	{
+		*val = data[0];
+		*val |= (data[1] << 8);
+		return true;
 	}
+}
 
-	return MCP23017_INT_ERR;
+bool MCP23017::writeRegister16(uint8_t reg_addr, uint16_t val)
+{
+	uint8_t data[3] = {reg_addr, (uint8_t)(val & 0xFF), (uint8_t)((val >> 8) & 0xFF)};
+	esp_err_t ret = i2c_master_write_to_device(m_i2c_port, m_address, data, sizeof(data), pdMS_TO_TICKS(10));
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE("MCP23017", "Write reg error: %d", ret);
+		return false;
+	}
+	else
+	{
+		return true;
+	}
 }

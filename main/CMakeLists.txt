@@ -1,5 +1,6 @@
 
 set (req
+	ioexp
 	oled
 	esp_event
 	esp_hap_core
