@@ -50,6 +50,8 @@
 #include <SSD1306I2C.h>
 #include <MCP23017.h>
 
+#include <iocfg.h>
+
 /*  Required for server verification during OTA, PEM format as string  */
 char server_cert[] = {};
 
@@ -343,15 +345,16 @@ static bool ioexp_init()
 	ioexp_p = std::make_shared<MCP23017>(I2C_NUM_0, MCP23017_BASE_ADDRESS, IO_RES_PIN, IO_INT_PIN, -1, true);
 	if (ioexp_p->init() == false)
 		return false;
-	if (ioexp_p->setIODIR(0x0F00) == false)
+	uint16_t input_cfg = (BTN_1_IOEXP_MASK | BTN_2_IOEXP_MASK | BTN_3_IOEXP_MASK | BTN_4_IOEXP_MASK);
+	if (ioexp_p->setIODIR(input_cfg) == false)
 		return false;
-	if (ioexp_p->setPullUp(0x0F00) == false)
+	if (ioexp_p->setPullUp(input_cfg) == false)
 		return false;
 	if (ioexp_p->setGPIO(0x0000) == false)
 		return false;
 	if (ioexp_p->setIntDefaultEnable(0x0000) == false)
 		return false;
-	if (ioexp_p->setIntEna(0x0F00) == false)
+	if (ioexp_p->setIntEna(input_cfg) == false)
 		return false;
 
 	ioexp_p->regDump();

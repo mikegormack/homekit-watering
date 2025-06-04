@@ -23,7 +23,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.1.4
+    version: 5.4.1
 direct_dependencies:
 - espressif/libsodium
 - espressif/mdns
