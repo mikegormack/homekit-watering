@@ -81,6 +81,7 @@ ui::~ui()
 
 void ui::ui_thread_entry(void *p)
 {
+	ESP_LOGI(TAG, "Started");
 	ui* ctx = (ui*)p;
 	while (1)
 	{
@@ -122,7 +123,7 @@ void ui::process_buttons()
 	//newState[2] = (pin & BTN_3_IOEXP_MASK) == 0;
 	//newState[3] = (pin & BTN_4_IOEXP_MASK) == 0;
 
-	ESP_LOGI(TAG, "pin = %x", pin);
+	ESP_LOGI(TAG, "pin = %04x", pin);
 
 	for (uint8_t i = 0; i < NUM_BUTTONS; i++)
 	{

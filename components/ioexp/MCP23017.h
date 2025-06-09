@@ -1,8 +1,10 @@
 #pragma once
 
-#include <driver/i2c.h>
+#include <driver/i2c_master.h>
 
 #include <functional>
+
+#define I2C_FREQ                100000
 
 #define MCP23017_BASE_ADDRESS   0x20
 
@@ -44,7 +46,7 @@
 class MCP23017
 {
 public:
-    MCP23017(i2c_port_t i2c_port, uint8_t address, int res_pin, int inta_pin, int intb_pin, bool int_mirror);
+    MCP23017(i2c_master_bus_handle_t i2c_bus, uint8_t address, int res_pin, int inta_pin, int intb_pin, bool int_mirror);
     ~MCP23017();
 
 	/*********************************************************************
@@ -118,8 +120,7 @@ public:
 
 
 private:
-	i2c_port_t m_i2c_port;
-	uint8_t m_address;
+	i2c_master_dev_handle_t m_i2c_handle;
 	int m_res_pin;
 
 	struct mcp23017_int_ctx_s
@@ -131,7 +132,7 @@ private:
 
 	QueueHandle_t m_int_evt_queue = NULL;
 
-	std::function<void(uint16_t, uint16_t, void*)> m_callback;
+	std::function<void(uint16_t, uint16_t, void*)> m_callback = nullptr;
 	void* m_user_data;
 
 	bool readRegister(uint8_t reg_addr, uint8_t *val);

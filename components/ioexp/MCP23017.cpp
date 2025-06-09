@@ -1,24 +1,23 @@
 
-#include <driver/i2c.h>
+#include <driver/i2c_master.h>
 #include <driver/gpio.h>
-
-#include <freertos/queue.h>
 
 #include <esp_log.h>
 
 #include <functional>
 
+#include <freertos/freeRTOS.h>
+#include <freertos/queue.h>
+
 #include <MCP23017.h>
 
-#define INTTERUPT_QUEUE_SIZE    10
+#define INTTERUPT_QUEUE_SIZE 10
 
 static const char *TAG = "MCP23017";
 
-MCP23017::MCP23017(i2c_port_t i2c_port, uint8_t address, int res_pin, int inta_pin, int intb_pin, bool int_mirror) :
-	m_i2c_port(i2c_port),
-	m_address(address),
-	m_res_pin(res_pin),
-	m_int_mirror(int_mirror)
+MCP23017::MCP23017(i2c_master_bus_handle_t i2c_bus, uint8_t address, int res_pin, int inta_pin, int intb_pin, bool int_mirror) :
+																													m_res_pin(res_pin),
+																													m_int_mirror(int_mirror)
 {
 	if (inta_pin < -1 || inta_pin > 39)
 	{
@@ -39,12 +38,40 @@ MCP23017::MCP23017(i2c_port_t i2c_port, uint8_t address, int res_pin, int inta_p
 	m_inta_ctx.drv = this;
 	m_intb_ctx.gpio = intb_pin;
 	m_intb_ctx.drv = this;
+
+	i2c_device_config_t i2c_dev_conf =
+	{
+		.dev_addr_length = I2C_ADDR_BIT_LEN_7,
+		.device_address = address,
+		.scl_speed_hz = I2C_FREQ,
+		.scl_wait_us = 0,
+		.flags =
+		{
+			.disable_ack_check = 0
+		}
+	};
+
+	esp_err_t ret = i2c_master_bus_add_device(i2c_bus, &i2c_dev_conf, &m_i2c_handle);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to add i2c device %d", ret);
+	}
+	else
+	{
+		ESP_LOGI(TAG, "Added i2c device addr 0x%x", address);
+	}
 }
 
 MCP23017::~MCP23017()
 {
 	if (m_int_evt_queue != nullptr)
 		vQueueDelete(m_int_evt_queue);
+
+	esp_err_t ret = i2c_master_bus_rm_device(m_i2c_handle);
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to remove i2c device %d", ret);
+	}
 	// exit task
 }
 
@@ -59,13 +86,12 @@ bool MCP23017::init()
 	if (m_res_pin != -1)
 	{
 		gpio_config_t io_conf =
-		{
-			.pin_bit_mask = (1ULL << m_res_pin),
-			.mode = GPIO_MODE_OUTPUT,
-			.pull_up_en = GPIO_PULLUP_DISABLE,
-			.pull_down_en = GPIO_PULLDOWN_DISABLE,
-			.intr_type = GPIO_INTR_DISABLE
-		};
+			{
+				.pin_bit_mask = (1ULL << m_res_pin),
+				.mode = GPIO_MODE_OUTPUT,
+				.pull_up_en = GPIO_PULLUP_DISABLE,
+				.pull_down_en = GPIO_PULLDOWN_DISABLE,
+				.intr_type = GPIO_INTR_DISABLE};
 		ret = gpio_config(&io_conf);
 		if (ret != ESP_OK)
 		{
@@ -104,12 +130,12 @@ bool MCP23017::init()
 	uint8_t iocon = m_int_mirror ? IOCON_MIRROR : 0;
 	success = success && writeRegister(MCP23017_IOCONA, iocon);
 
+	ESP_LOGI(TAG, "init %s", success ? "ok" : "err");
 	return success;
 }
 
 void MCP23017::uninit()
 {
-
 }
 
 bool MCP23017::reset()
@@ -117,7 +143,6 @@ bool MCP23017::reset()
 	esp_err_t ret = ESP_OK;
 	if (m_res_pin == -1)
 	{
-
 	}
 
 	gpio_num_t io_res_pin = (gpio_num_t)m_res_pin;
@@ -130,24 +155,23 @@ bool MCP23017::reset()
 	return (ret == ESP_OK);
 }
 
-void MCP23017::setEventCallback(std::function<void(uint16_t, uint16_t, void*)> callback, void* user_data)
+void MCP23017::setEventCallback(std::function<void(uint16_t, uint16_t, void *)> callback, void *user_data)
 {
 	m_callback = callback;
 	m_user_data = user_data;
 }
 
-bool MCP23017::configIntPin(struct mcp23017_int_ctx_s* ctx)
+bool MCP23017::configIntPin(struct mcp23017_int_ctx_s *ctx)
 {
 	bool success = true;
 	esp_err_t ret = ESP_OK;
 	gpio_config_t io_conf =
-	{
-		.pin_bit_mask = (1ULL << ctx->gpio),
-		.mode = GPIO_MODE_INPUT,
-		.pull_up_en = GPIO_PULLUP_DISABLE,
-		.pull_down_en = GPIO_PULLDOWN_DISABLE,
-		.intr_type = GPIO_INTR_NEGEDGE
-	};
+		{
+			.pin_bit_mask = (1ULL << ctx->gpio),
+			.mode = GPIO_MODE_INPUT,
+			.pull_up_en = GPIO_PULLUP_DISABLE,
+			.pull_down_en = GPIO_PULLDOWN_DISABLE,
+			.intr_type = GPIO_INTR_NEGEDGE};
 	ret = gpio_config(&io_conf);
 	if (ret != ESP_OK)
 	{
@@ -165,17 +189,24 @@ bool MCP23017::configIntPin(struct mcp23017_int_ctx_s* ctx)
 
 void IRAM_ATTR MCP23017::isrHandler(void *arg)
 {
-	mcp23017_int_ctx_s* ctx = static_cast<mcp23017_int_ctx_s*>(arg);
+	mcp23017_int_ctx_s *ctx = static_cast<mcp23017_int_ctx_s *>(arg);
 	xQueueSendFromISR(ctx->drv->m_int_evt_queue, &ctx->gpio, NULL);
 }
 
 void MCP23017::intTask(void *arg)
 {
 	int gpio_num = 0;
-	MCP23017* ctx = (MCP23017*)arg;
+	MCP23017 *ctx = (MCP23017 *)arg;
 	while (1)
 	{
-		if (xQueueReceive(ctx->m_int_evt_queue, &gpio_num, portMAX_DELAY))
+		/*uint8_t iocon =IOCON_MIRROR;
+		if (ctx->writeRegister(MCP23017_IOCONA, iocon))
+		{
+			ESP_LOGI(TAG, "writeRegister ok");
+		}*/
+
+
+		/*if (xQueueReceive(ctx->m_int_evt_queue, &gpio_num, portMAX_DELAY))
 		{
 			vTaskDelay(pdMS_TO_TICKS(2));
 		}
@@ -193,9 +224,13 @@ void MCP23017::intTask(void *arg)
 				// read capture reg resets interrupt
 				if (ctx->m_callback != nullptr)
 					ctx->m_callback(flags, cap, ctx->m_user_data);
+
+				ESP_LOGI(TAG, "Event cb");
 			}
 		}
-		vTaskDelay(pdMS_TO_TICKS(5));
+		vTaskDelay(pdMS_TO_TICKS(5));*/
+
+		vTaskDelay(pdMS_TO_TICKS(2000));
 	}
 }
 
@@ -204,7 +239,7 @@ bool MCP23017::setIODIR(uint16_t iodir)
 	return writeRegister16(MCP23017_IODIRA, iodir);
 }
 
-bool MCP23017::getIODIR(uint16_t* iodir)
+bool MCP23017::getIODIR(uint16_t *iodir)
 {
 	return readRegister16(MCP23017_IODIRA, iodir);
 }
@@ -214,7 +249,7 @@ bool MCP23017::setGPIO(uint16_t gpio)
 	return writeRegister16(MCP23017_OLATA, gpio);
 }
 
-bool MCP23017::getGPIO(uint16_t* gpio)
+bool MCP23017::getGPIO(uint16_t *gpio)
 {
 	return readRegister16(MCP23017_GPIOA, gpio);
 }
@@ -224,7 +259,7 @@ bool MCP23017::setPullUp(uint16_t gpio)
 	return writeRegister16(MCP23017_GPPUA, gpio);
 }
 
-bool MCP23017::getPullUp(uint16_t* gpio)
+bool MCP23017::getPullUp(uint16_t *gpio)
 {
 	return readRegister16(MCP23017_GPPUA, gpio);
 }
@@ -234,7 +269,7 @@ bool MCP23017::setIntEna(uint16_t mask)
 	return writeRegister16(MCP23017_GPINTENA, mask);
 }
 
-bool MCP23017::getIntEna(uint16_t* mask)
+bool MCP23017::getIntEna(uint16_t *mask)
 {
 	return readRegister16(MCP23017_GPINTENA, mask);
 }
@@ -244,7 +279,7 @@ bool MCP23017::setIntDefaultEnable(uint16_t enable)
 	return writeRegister16(MCP23017_INTCONA, enable);
 }
 
-bool MCP23017::getIntDefaultEnable(uint16_t* enable)
+bool MCP23017::getIntDefaultEnable(uint16_t *enable)
 {
 	return readRegister16(MCP23017_INTCONA, enable);
 }
@@ -254,21 +289,20 @@ bool MCP23017::setIntDefaultValue(uint16_t val)
 	return writeRegister16(MCP23017_DEFVALA, val);
 }
 
-bool MCP23017::getIntDefaultValue(uint16_t* val)
+bool MCP23017::getIntDefaultValue(uint16_t *val)
 {
 	return readRegister16(MCP23017_DEFVALA, val);
 }
 
-bool MCP23017::getIntFlag(uint16_t* val)
+bool MCP23017::getIntFlag(uint16_t *val)
 {
 	return readRegister16(MCP23017_INTFA, val);
 }
 
-bool MCP23017::getIntCapture(uint16_t* val)
+bool MCP23017::getIntCapture(uint16_t *val)
 {
 	return readRegister16(MCP23017_INTCAPA, val);
 }
-
 
 void MCP23017::regDump()
 {
@@ -301,10 +335,10 @@ bool MCP23017::setIntPinConfig(bool mirror, bool open_drain, bool act_hi)
 
 bool MCP23017::readRegister(uint8_t reg_addr, uint8_t *val)
 {
-	esp_err_t ret = i2c_master_write_read_device(m_i2c_port, m_address, &reg_addr, sizeof(reg_addr), val, 1, pdMS_TO_TICKS(10));
+	esp_err_t ret = i2c_master_transmit_receive(m_i2c_handle, &reg_addr, sizeof(reg_addr), val, 1, pdMS_TO_TICKS(100));
 	if (ret != ESP_OK)
 	{
-		ESP_LOGE("MCP23017", "Read reg error: %d", ret);
+		ESP_LOGE(TAG, "Read reg error: %d", ret);
 		return false;
 	}
 	else
@@ -316,10 +350,10 @@ bool MCP23017::readRegister(uint8_t reg_addr, uint8_t *val)
 bool MCP23017::writeRegister(uint8_t reg_addr, uint8_t val)
 {
 	uint8_t data[2] = {reg_addr, val};
-	esp_err_t ret = i2c_master_write_to_device(m_i2c_port, m_address, data, sizeof(data), pdMS_TO_TICKS(10));
+	esp_err_t ret = i2c_master_transmit(m_i2c_handle, data, sizeof(data), pdMS_TO_TICKS(100));
 	if (ret != ESP_OK)
 	{
-		ESP_LOGE("MCP23017", "Write reg error: %d", ret);
+		ESP_LOGE(TAG, "Write reg error: %d", ret);
 		return false;
 	}
 	else
@@ -331,16 +365,19 @@ bool MCP23017::writeRegister(uint8_t reg_addr, uint8_t val)
 bool MCP23017::readRegister16(uint8_t reg_addr, uint16_t *val)
 {
 	uint8_t data[2] = {0};
-	esp_err_t ret = i2c_master_write_read_device(m_i2c_port, m_address, &reg_addr, sizeof(reg_addr), data, sizeof(data), pdMS_TO_TICKS(10));
+
+	esp_err_t ret = i2c_master_transmit_receive(m_i2c_handle, &reg_addr, sizeof(reg_addr), data, sizeof(data), pdMS_TO_TICKS(100));
 	if (ret != ESP_OK)
 	{
-		ESP_LOGE("MCP23017", "Read reg error: %d", ret);
+		ESP_LOGE(TAG, "Read reg error: %d", ret);
 		return false;
 	}
 	else
 	{
+
 		*val = data[0];
 		*val |= (data[1] << 8);
+		ESP_LOGI(TAG, "Read reg: 0x%02x val 0x%04x", reg_addr, *val);
 		return true;
 	}
 }
@@ -348,10 +385,10 @@ bool MCP23017::readRegister16(uint8_t reg_addr, uint16_t *val)
 bool MCP23017::writeRegister16(uint8_t reg_addr, uint16_t val)
 {
 	uint8_t data[3] = {reg_addr, (uint8_t)(val & 0xFF), (uint8_t)((val >> 8) & 0xFF)};
-	esp_err_t ret = i2c_master_write_to_device(m_i2c_port, m_address, data, sizeof(data), pdMS_TO_TICKS(10));
+	esp_err_t ret = i2c_master_transmit(m_i2c_handle, data, sizeof(data), pdMS_TO_TICKS(10));
 	if (ret != ESP_OK)
 	{
-		ESP_LOGE("MCP23017", "Write reg error: %d", ret);
+		ESP_LOGE(TAG, "Write reg16 error: %d", ret);
 		return false;
 	}
 	else

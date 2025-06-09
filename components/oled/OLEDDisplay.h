@@ -115,7 +115,7 @@ enum OLEDDISPLAY_GEOMETRY
 	GEOMETRY_128_32   = 1
 };
 
-#define RETURN_ERR_CHECK_BOOL(BOOLEAN_VALUE, CMD_HANDLE)                    \
+/*#define RETURN_ERR_CHECK_BOOL(BOOLEAN_VALUE, CMD_HANDLE)                    \
 	do                                                                      \
 	{                                                                       \
 		bool LOCAL_BOOLEAN_VALUE = (BOOLEAN_VALUE);                         \
@@ -124,7 +124,7 @@ enum OLEDDISPLAY_GEOMETRY
 			if (CMD_HANDLE != NULL) i2c_cmd_link_delete(CMD_HANDLE);        \
 			return (false);                                                 \
 		}                                                                   \
-	} while (0)
+	} while (0)*/
 
 typedef uint8_t (*FontTableLookupFunction)(const uint8_t ch);
 
