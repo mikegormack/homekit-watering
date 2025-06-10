@@ -9,6 +9,7 @@ public:
 	~homeScreen();
 
 	void update() override;
+	void sendBtnEvent(uint8_t btn) override;
 private:
 	void update_clock();
 	void show_wifi();

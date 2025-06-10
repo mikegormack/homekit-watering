@@ -39,7 +39,7 @@
 #include <vector>
 #include <cstring>
 
-#define I2C_FREQ                100000
+#define I2C_FREQ                400000
 
 static const char *TAG = "SSD1306I2C";
 
@@ -181,63 +181,17 @@ bool SSD1306I2C::display(void)
 
 bool SSD1306I2C::sendPageData(const uint8_t* buf, size_t width)
 {
-	//i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-	//esp_err_t ret = ESP_OK;
-
 	std::vector<uint8_t> data(width + 1);
-	//data[0] = (this->_address << 1) | I2C_MASTER_WRITE;
 	data[0] = OLED_CONTROL_BYTE_DATA_STREAM;
 	std::memcpy(data.data() + 1, buf, width);
 
 	esp_err_t ret = i2c_master_transmit(_i2c_handle, data.data(), data.size(), 500);
 	if (ret != ESP_OK)
 	{
-		ESP_LOGE(TAG, "sendPageData error %d", ret);
+		ESP_LOGE(TAG, "Page data error %d", ret);
 		return false;
 	}
 	return true;
-	/*ret = i2c_master_start(cmd);
-	if (ret != ESP_OK)
-	{
-		ESP_LOGE("SSD1306I2C", "master_start err: %d", ret);
-		goto error;
-	}
-	ret = i2c_master_write_byte(cmd, (this->_address << 1) | I2C_MASTER_WRITE, true);
-	if (ret != ESP_OK)
-	{
-		ESP_LOGE("SSD1306I2C", "master_write_byte addr err: %d", ret);
-		goto error;
-	}
-	ret = i2c_master_write_byte(cmd, OLED_CONTROL_BYTE_DATA_STREAM, true);
-	if (ret != ESP_OK)
-	{
-		ESP_LOGE("SSD1306I2C", "master_write_byte cmd err: %d", ret);
-		goto error;
-	}
-	ret = i2c_master_write(cmd, buf, width, true);
-	if (ret != ESP_OK)
-	{
-		ESP_LOGE("SSD1306I2C", "master_write err: %d", ret);
-		goto error;
-	}
-	ret = i2c_master_stop(cmd);
-	if (ret != ESP_OK)
-	{
-		ESP_LOGE("SSD1306I2C", "master_stop err: %d", ret);
-		goto error;
-	}
-
-	ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 50 / portTICK_PERIOD_MS);
-	if (ret != ESP_OK)
-	{
-		ESP_LOGE("SSD1306I2C", "i2c_master_cmd_begin: %d", ret);
-		goto error;
-	}
-	i2c_cmd_link_delete(cmd);
-	return true;
-error:
-	i2c_cmd_link_delete(cmd);
-	return false;*/
 }
 
 uint8_t SSD1306I2C::max(uint8_t a, uint8_t b)
@@ -253,29 +207,15 @@ bool SSD1306I2C::sendCommand(uint8_t command)
 
 bool SSD1306I2C::sendCommand(uint8_t command, uint8_t *pDat, uint8_t len)
 {
-	//i2c_cmd_handle_t cmd = i2c_cmd_link_create();
 	std::vector<uint8_t> data(len + 2);
 	data[0] = OLED_CONTROL_BYTE_CMD_STREAM;
 	data[1] = command;
 	std::memcpy(data.data() + 2, pDat, len);
 
-	/*RETURN_ERR_CHECK_BOOL(i2c_master_start(cmd) == ESP_OK, cmd);
-	RETURN_ERR_CHECK_BOOL(i2c_master_write_byte(cmd, (this->_address << 1) | I2C_MASTER_WRITE, true) == ESP_OK, cmd);
-	RETURN_ERR_CHECK_BOOL(i2c_master_write_byte(cmd, OLED_CONTROL_BYTE_CMD_STREAM, true) == ESP_OK, cmd);
-	RETURN_ERR_CHECK_BOOL(i2c_master_write_byte(cmd, command, true) == ESP_OK, cmd);
-	while (len-- > 0)
-	{
-		RETURN_ERR_CHECK_BOOL(i2c_master_write_byte(cmd, *pDat, true) == ESP_OK, cmd);
-		pDat++;
-	}
-	RETURN_ERR_CHECK_BOOL(i2c_master_stop(cmd) == ESP_OK, cmd);*/
-	//esp_err_t err = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10 / portTICK_PERIOD_MS);
-	//i2c_cmd_link_delete(cmd);
-	//ESP_LOGI("SSD1306Wire", "Sent Command %d result %d", command, err);
 	esp_err_t ret = i2c_master_transmit(_i2c_handle, data.data(), data.size(), 50);
 	if (ret != ESP_OK)
 	{
-		ESP_LOGE(TAG, "sendPageData error %d", ret);
+		ESP_LOGE(TAG, "Command error %d", ret);
 		return false;
 	}
 	return true;

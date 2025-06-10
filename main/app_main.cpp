@@ -370,16 +370,7 @@ static bool ioexp_init(i2c_master_bus_handle_t i2c_port)
 static void sprinkler_thread_entry(void *p)
 {
 	esp_err_t ret = ESP_OK;
-	/*i2c_config_t i2c_config =
-	{
-		.mode = I2C_MODE_MASTER,
-		.sda_io_num = 5,
-		.scl_io_num = 4,
-		.sda_pullup_en = GPIO_PULLUP_ENABLE,
-		.scl_pullup_en = GPIO_PULLUP_ENABLE,
-		.master = {.clk_speed = 400000},
-		.clk_flags = 0
-	};*/
+
 	i2c_master_bus_config_t i2c_bus_config =
 	{
 		.i2c_port = -1,
@@ -404,21 +395,10 @@ static void sprinkler_thread_entry(void *p)
 		return;
 	}
 	ESP_LOGI(TAG, "i2c bus init ok");
-	/*ret = i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
-	if (ret != ESP_OK)
-	{
-		ESP_LOGE(TAG, "i2c driver install failed %d", ret);
-	}*/
-
-
 
 	if (ioexp_init(bus_handle) == false)
 	{
-		ESP_LOGE(TAG, "i2c init failed");
-	}
-	else
-	{
-		ESP_LOGI(TAG, "i2c init ok");
+		ESP_LOGE(TAG, "ioexp init failed");
 	}
 	disp_p = std::make_unique<SSD1306I2C>(0x3C, bus_handle, GEOMETRY_128_64);
 	if (disp_p->init())

@@ -17,8 +17,6 @@ class ui
 private:
 	SSD1306I2C& m_display;
 	std::shared_ptr<MCP23017> m_io_exp;
-	EventGroupHandle_t m_event_group;
-
 	esp_timer_handle_t m_btn_timer;
 
 	std::mutex m_btn_mutex;

@@ -21,29 +21,39 @@ homeScreen::~homeScreen()
 
 void homeScreen::update()
 {
-	m_display.setColor(WHITE);
-	m_display.clear();
+	if (++m_update_count > 50)
+	{
+		m_update_count = 0;
 
-	m_display.drawBitmap(112, 0, tool_icon16x16, 16, 16);
+		m_display.setColor(WHITE);
+		m_display.clear();
 
-	m_display.drawBitmap(42, 22, water_tap_icon16x16, 16, 16);
-	m_display.setFont(ArialMT_Plain_16);
-	m_display.drawString(60, 20, "Off");
+		m_display.drawBitmap(112, 0, tool_icon16x16, 16, 16);
 
-	m_display.drawBitmap(13, 44, moisture_icon16x16, 16, 16);
-	m_display.drawProgressBar(30,48,30,6,50);
+		m_display.drawBitmap(42, 22, water_tap_icon16x16, 16, 16);
+		m_display.setFont(ArialMT_Plain_16);
+		m_display.drawString(60, 20, "Off");
 
-	m_display.drawBitmap(63, 44, clock_icon16x16, 16, 16);
+		m_display.drawBitmap(13, 44, moisture_icon16x16, 16, 16);
+		m_display.drawProgressBar(30,48,30,6,50);
 
-	m_display.setFont(ArialMT_Plain_10);
-	m_display.drawString(81, 46, "00");
-	m_display.drawString(94, 46, ":");
-	m_display.drawString(99, 46, "00");
+		m_display.drawBitmap(63, 44, clock_icon16x16, 16, 16);
 
-	update_clock();
-	show_wifi();
+		m_display.setFont(ArialMT_Plain_10);
+		m_display.drawString(81, 46, "00");
+		m_display.drawString(94, 46, ":");
+		m_display.drawString(99, 46, "00");
 
-	m_display.display();
+		update_clock();
+		show_wifi();
+
+		m_display.display();
+	}
+}
+
+void homeScreen::sendBtnEvent(uint8_t btn)
+{
+
 }
 
 void homeScreen::update_clock()

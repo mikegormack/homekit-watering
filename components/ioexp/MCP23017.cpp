@@ -199,14 +199,12 @@ void MCP23017::intTask(void *arg)
 	MCP23017 *ctx = (MCP23017 *)arg;
 	while (1)
 	{
-		uint16_t iocon = 0xAAAA;
+		/*uint16_t iocon = 0xAAAA;
 		if (ctx->setGPIO(iocon))
 		{
 			ESP_LOGI(TAG, "writeRegister ok");
-		}
-
-
-		/*if (xQueueReceive(ctx->m_int_evt_queue, &gpio_num, portMAX_DELAY))
+		}*/
+		if (xQueueReceive(ctx->m_int_evt_queue, &gpio_num, portMAX_DELAY))
 		{
 			vTaskDelay(pdMS_TO_TICKS(2));
 		}
@@ -228,9 +226,7 @@ void MCP23017::intTask(void *arg)
 				ESP_LOGI(TAG, "Event cb");
 			}
 		}
-		vTaskDelay(pdMS_TO_TICKS(5));*/
-
-		vTaskDelay(pdMS_TO_TICKS(2000));
+		vTaskDelay(pdMS_TO_TICKS(5));
 	}
 }
 
@@ -374,10 +370,8 @@ bool MCP23017::readRegister16(uint8_t reg_addr, uint16_t *val)
 	}
 	else
 	{
-
 		*val = data[0];
 		*val |= (data[1] << 8);
-		ESP_LOGI(TAG, "Read reg: 0x%02x val 0x%04x", reg_addr, *val);
 		return true;
 	}
 }

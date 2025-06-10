@@ -12,3 +12,5 @@
 #define BTN_2_IOEXP_MASK    (1 << BTN_2_IOEXP_PIN)
 #define BTN_3_IOEXP_MASK    (1 << BTN_3_IOEXP_PIN)
 #define BTN_4_IOEXP_MASK    (1 << BTN_4_IOEXP_PIN)
+
+#define ARRAY_SIZE(x)       (sizeof(x)/sizeof(x[0]))
