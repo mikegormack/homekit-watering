@@ -4,7 +4,7 @@
 
 #include <functional>
 
-#define I2C_FREQ                100000
+#define I2C_FREQ                400000
 
 #define MCP23017_BASE_ADDRESS   0x20
 

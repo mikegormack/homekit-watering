@@ -410,7 +410,7 @@ static void sprinkler_thread_entry(void *p)
 		ESP_LOGE(TAG, "i2c driver install failed %d", ret);
 	}*/
 
-	//disp_p = std::make_unique<SSD1306I2C>(0x3C, bus_handle, GEOMETRY_128_64);
+
 
 	if (ioexp_init(bus_handle) == false)
 	{
@@ -420,14 +420,14 @@ static void sprinkler_thread_entry(void *p)
 	{
 		ESP_LOGI(TAG, "i2c init ok");
 	}
-
-	/*if (disp_p->init())
+	disp_p = std::make_unique<SSD1306I2C>(0x3C, bus_handle, GEOMETRY_128_64);
+	if (disp_p->init())
 	{
 
 		disp_p->setContrast(255);
 		disp_p->flipScreenVertically();
 		disp_p->setLogBuffer(5, 30);
-		ui_p = std::make_unique<ui>(*disp_p, ioexp_p);*/
+		ui_p = std::make_unique<ui>(*disp_p, ioexp_p);
 		// ui_p->homescreen();
 		// display.resetDisplay();
 		// display.setColor(BLACK);
@@ -450,7 +450,7 @@ static void sprinkler_thread_entry(void *p)
 		//display.drawString(0, 20, "trev mc farkleberry");
 display.fillRect(30,40, 20, 20);
 		display.display();*/
-	//}
+	}
 
 	hap_acc_t *accessory;
 	// hap_serv_t *service;

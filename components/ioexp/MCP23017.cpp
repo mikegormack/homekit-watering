@@ -199,11 +199,11 @@ void MCP23017::intTask(void *arg)
 	MCP23017 *ctx = (MCP23017 *)arg;
 	while (1)
 	{
-		/*uint8_t iocon =IOCON_MIRROR;
-		if (ctx->writeRegister(MCP23017_IOCONA, iocon))
+		uint16_t iocon = 0xAAAA;
+		if (ctx->setGPIO(iocon))
 		{
 			ESP_LOGI(TAG, "writeRegister ok");
-		}*/
+		}
 
 
 		/*if (xQueueReceive(ctx->m_int_evt_queue, &gpio_num, portMAX_DELAY))
@@ -335,7 +335,7 @@ bool MCP23017::setIntPinConfig(bool mirror, bool open_drain, bool act_hi)
 
 bool MCP23017::readRegister(uint8_t reg_addr, uint8_t *val)
 {
-	esp_err_t ret = i2c_master_transmit_receive(m_i2c_handle, &reg_addr, sizeof(reg_addr), val, 1, pdMS_TO_TICKS(100));
+	esp_err_t ret = i2c_master_transmit_receive(m_i2c_handle, &reg_addr, sizeof(reg_addr), val, 1, 50);
 	if (ret != ESP_OK)
 	{
 		ESP_LOGE(TAG, "Read reg error: %d", ret);
@@ -350,7 +350,7 @@ bool MCP23017::readRegister(uint8_t reg_addr, uint8_t *val)
 bool MCP23017::writeRegister(uint8_t reg_addr, uint8_t val)
 {
 	uint8_t data[2] = {reg_addr, val};
-	esp_err_t ret = i2c_master_transmit(m_i2c_handle, data, sizeof(data), pdMS_TO_TICKS(100));
+	esp_err_t ret = i2c_master_transmit(m_i2c_handle, data, sizeof(data), 50);
 	if (ret != ESP_OK)
 	{
 		ESP_LOGE(TAG, "Write reg error: %d", ret);
@@ -366,7 +366,7 @@ bool MCP23017::readRegister16(uint8_t reg_addr, uint16_t *val)
 {
 	uint8_t data[2] = {0};
 
-	esp_err_t ret = i2c_master_transmit_receive(m_i2c_handle, &reg_addr, sizeof(reg_addr), data, sizeof(data), pdMS_TO_TICKS(100));
+	esp_err_t ret = i2c_master_transmit_receive(m_i2c_handle, &reg_addr, sizeof(reg_addr), data, sizeof(data), 50);
 	if (ret != ESP_OK)
 	{
 		ESP_LOGE(TAG, "Read reg error: %d", ret);
@@ -385,7 +385,7 @@ bool MCP23017::readRegister16(uint8_t reg_addr, uint16_t *val)
 bool MCP23017::writeRegister16(uint8_t reg_addr, uint16_t val)
 {
 	uint8_t data[3] = {reg_addr, (uint8_t)(val & 0xFF), (uint8_t)((val >> 8) & 0xFF)};
-	esp_err_t ret = i2c_master_transmit(m_i2c_handle, data, sizeof(data), pdMS_TO_TICKS(10));
+	esp_err_t ret = i2c_master_transmit(m_i2c_handle, data, sizeof(data), 50);
 	if (ret != ESP_OK)
 	{
 		ESP_LOGE(TAG, "Write reg16 error: %d", ret);

@@ -189,7 +189,7 @@ bool SSD1306I2C::sendPageData(const uint8_t* buf, size_t width)
 	data[0] = OLED_CONTROL_BYTE_DATA_STREAM;
 	std::memcpy(data.data() + 1, buf, width);
 
-	esp_err_t ret = i2c_master_transmit(_i2c_handle, data.data(), data.size(), pdMS_TO_TICKS(50));
+	esp_err_t ret = i2c_master_transmit(_i2c_handle, data.data(), data.size(), 500);
 	if (ret != ESP_OK)
 	{
 		ESP_LOGE(TAG, "sendPageData error %d", ret);
@@ -272,7 +272,7 @@ bool SSD1306I2C::sendCommand(uint8_t command, uint8_t *pDat, uint8_t len)
 	//esp_err_t err = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10 / portTICK_PERIOD_MS);
 	//i2c_cmd_link_delete(cmd);
 	//ESP_LOGI("SSD1306Wire", "Sent Command %d result %d", command, err);
-	esp_err_t ret = i2c_master_transmit(_i2c_handle, data.data(), data.size(), pdMS_TO_TICKS(10));
+	esp_err_t ret = i2c_master_transmit(_i2c_handle, data.data(), data.size(), 50);
 	if (ret != ESP_OK)
 	{
 		ESP_LOGE(TAG, "sendPageData error %d", ret);
