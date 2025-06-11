@@ -17,6 +17,10 @@ public:
 
 	}
 
+	virtual void update() = 0;
+
+	virtual void sendBtnEvent(uint8_t btn) = 0;
+
 protected:
 	SSD1306I2C& m_display;
 
@@ -34,8 +38,4 @@ protected:
 	const uint8_t water_tap_icon16x16[32] = WATER_TAP_ICON16X16;
 
 	int m_update_count;
-
-	virtual void update() = 0;
-
-	virtual void sendBtnEvent(uint8_t btn) = 0;
 };

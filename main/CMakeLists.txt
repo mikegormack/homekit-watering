@@ -23,6 +23,7 @@ set (srcs
 	app_main.cpp
 	ui.cpp
 	homeScreen.cpp
+	setOnTimeScreen.cpp
 )
 
 idf_component_register(

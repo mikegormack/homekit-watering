@@ -2,9 +2,13 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/event_groups.h>
+#include <freertos/queue.h>
 
 #include <esp_log.h>
 #include <esp_timer.h>
+
+#include <homeScreen.h>
+#include <setOnTimeScreen.h>
 
 #include <ctime>
 #include <sstream>
@@ -19,6 +23,8 @@
 #include <ui.h>
 
 static const char *TAG = "UI";
+
+#define EVT_QUEUE_SIZE                      8
 
 #define BTN_MAX_DOWN_TIME                   (60000)
 
@@ -49,6 +55,13 @@ typedef struct
 	uint64_t down_tick;
 } btn_t;
 
+typedef struct
+{
+	uint8_t id;
+	btn_state_t state;
+} evt_t;
+
+
 static btn_t buttons[] =
 {
 	{ .id = 1, .io_mask = BTN_1_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0 },
@@ -61,11 +74,10 @@ static btn_t buttons[] =
 
 ui::ui(SSD1306I2C& display, std::shared_ptr<MCP23017> io_exp) :
 	m_display(display),
-	m_io_exp(io_exp),
-	m_home_screen(display)
+	m_io_exp(io_exp)
 {
 	m_io_exp->setEventCallback(io_int_callback, this);
-	xTaskCreate(ui_thread_entry, "UI Task", 4096, this, 1, NULL);
+	m_current_scr = std::make_unique<homeScreen>(display);
 
 	const esp_timer_create_args_t timer_args = {
         .callback = &button_tmr_handler,
@@ -74,24 +86,58 @@ ui::ui(SSD1306I2C& display, std::shared_ptr<MCP23017> io_exp) :
         .name = "single_shot",
         .skip_unhandled_events = true,
     };
-
-    esp_timer_create(&timer_args, &m_btn_timer);
+    esp_err_t res = esp_timer_create(&timer_args, &m_btn_timer);
+	if (res != ESP_OK)
+	{
+		ESP_LOGE(TAG, "timer create fail %d", res);
+	}
+	m_evt_queue = xQueueCreate(EVT_QUEUE_SIZE, sizeof(evt_t));
+	if (m_evt_queue == nullptr)
+	{
+		ESP_LOGE(TAG, "queue create fail %d", res);
+	}
+    BaseType_t result = xTaskCreate(ui_thread_entry, "UI Task", 4096, this, 1, NULL);
+	if (result == pdFAIL)
+	{
+		ESP_LOGE(TAG, "task alloc fail");
+	}
 }
 
 ui::~ui()
 {
+	if (m_evt_queue != nullptr)
+		vQueueDelete(m_evt_queue);
 
+	esp_timer_delete(m_btn_timer);
 }
 
 void ui::ui_thread_entry(void *p)
 {
 	ESP_LOGI(TAG, "Started");
 	ui* ctx = (ui*)p;
+	evt_t evt = {0};
 	while (1)
 	{
 		vTaskDelay(pdMS_TO_TICKS(UI_TASK_PERIOD_MS));
-		ctx->m_home_screen.update();
+		if (ctx->m_current_scr != nullptr)
+			ctx->m_current_scr->update();
+
+		if (xQueueReceive(ctx->m_evt_queue, &evt, pdMS_TO_TICKS(5)))
+		{
+			ESP_LOGI(TAG, "Evt %d %d", evt.id, evt.state);
+			if (evt.id == 2 && evt.state == BTN_STATE_LONG_HOLD)
+			{
+				ctx->m_current_scr = std::make_unique<setOnTimeScreen>(ctx->m_display);
+			}
+		}
 	}
+}
+
+void ui::io_int_callback(uint16_t flags, uint16_t capture, void* user_data)
+{
+	ui* ctx = (ui*)user_data;
+	ESP_LOGI(TAG, "Int cb %d %d", flags, capture);
+	ctx->process_buttons();
 }
 
 void ui::button_tmr_handler(void* arg)
@@ -132,10 +178,10 @@ void ui::process_buttons()
 				buttons[i].down_tick = esp_timer_get_time();
 				buttons[i].state = BTN_STATE_DOWN;
 
-
 				ESP_LOGI(TAG, "Btn %d dn tick %lld", i, buttons[i].down_tick);
-				/*if (btnCallback != NULL)
-					btnCallback(&buttons[i]);*/
+
+				evt_t evt = {.id = buttons[i].id, .state = BTN_STATE_DOWN };
+				xQueueSend(m_evt_queue, &evt, 0);
 			}
 		}
 		else
@@ -151,15 +197,15 @@ void ui::process_buttons()
 					{
 						buttons[i].state = BTN_STATE_LONG_HOLD;
 						ESP_LOGI(TAG, "******** Btn %d long hold", i);
-						/*if (btnCallback != NULL)
-							btnCallback(&buttons[i]);*/
+						evt_t evt = {.id = buttons[i].id, .state = buttons[i].state };
+						xQueueSend(m_evt_queue, &evt, 0);
 					}
 					else if ((buttons[i].state == BTN_STATE_LONG_HOLD) && (ms > BTN_VLONG_PRESS_MS))
 					{
 						buttons[i].state = BTN_STATE_VLONG_HOLD;
 						ESP_LOGI(TAG, "********** Btn %d v long hold", i);
-						/*if (btnCallback != NULL)
-							btnCallback(&buttons[i]);*/
+						evt_t evt = {.id = buttons[i].id, .state = buttons[i].state };
+						xQueueSend(m_evt_queue, &evt, 0);
 					}
 				}
 				else
@@ -191,11 +237,3 @@ void ui::process_buttons()
 		esp_timer_start_once(m_btn_timer, BTN_POLL_TIME_MS * 1000);
 	}
 }
-
-void ui::io_int_callback(uint16_t flags, uint16_t capture, void* user_data)
-{
-	ui* ctx = (ui*)user_data;
-	ESP_LOGI(TAG, "Int cb %d %d", flags, capture);
-	ctx->process_buttons();
-}
-

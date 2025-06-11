@@ -11,7 +11,7 @@
 
 #include <MCP23017.h>
 
-#define INTTERUPT_QUEUE_SIZE 10
+#define INTERRUPT_QUEUE_SIZE 10
 
 static const char *TAG = "MCP23017";
 
@@ -103,7 +103,7 @@ bool MCP23017::init()
 	if (m_inta_ctx.gpio != -1 || m_intb_ctx.gpio != -1)
 	{
 		gpio_install_isr_service(0);
-		m_int_evt_queue = xQueueCreate(INTTERUPT_QUEUE_SIZE, sizeof(int));
+		m_int_evt_queue = xQueueCreate(INTERRUPT_QUEUE_SIZE, sizeof(int));
 		if (m_int_evt_queue == nullptr)
 		{
 			ESP_LOGE(TAG, "queue init fail");
