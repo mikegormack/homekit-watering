@@ -11,6 +11,7 @@
 setOnTimeScreen::setOnTimeScreen(SSD1306I2C& display) :
 	screen(display)
 {
+	m_display.clear();
 }
 
 setOnTimeScreen::~setOnTimeScreen()
@@ -24,7 +25,7 @@ void setOnTimeScreen::update()
 		m_update_count = 50;
 
 
-		m_display.setFont(ArialMT_Plain_10);
+		m_display.setFont(ArialMT_Plain_16);
 		m_display.drawString(50, 20, "00:00");
 
 		/*m_display.setColor(WHITE);
