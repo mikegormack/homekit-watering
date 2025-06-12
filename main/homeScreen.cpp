@@ -10,8 +10,7 @@
 #include <SSD1306I2C.h>
 #include <icons.h>
 
-homeScreen::homeScreen(SSD1306I2C& display) :
-	screen(display)
+homeScreen::homeScreen(SSD1306I2C &display) : screen(display)
 {
 }
 
@@ -35,7 +34,7 @@ void homeScreen::update()
 		m_display.drawString(60, 20, "Off");
 
 		m_display.drawBitmap(13, 44, moisture_icon16x16, 16, 16);
-		m_display.drawProgressBar(30,48,30,6,50);
+		m_display.drawProgressBar(30, 48, 30, 6, 50);
 
 		m_display.drawBitmap(63, 44, clock_icon16x16, 16, 16);
 
@@ -55,18 +54,17 @@ void homeScreen::update()
 	}
 }
 
-void homeScreen::sendBtnEvent(uint8_t btn)
+void homeScreen::receiveEvent(evt_t *evt)
 {
-
 }
 
 void homeScreen::update_clock()
 {
 	std::time_t now;
-    std::time(&now);
-    std::tm* local = std::localtime(&now);
+	std::time(&now);
+	std::tm *local = std::localtime(&now);
 
-    m_display.setFont(ArialMT_Plain_10);
+	m_display.setFont(ArialMT_Plain_10);
 
 	std::stringstream ss;
 	ss << std::setw(2) << std::setfill('0') << +local->tm_hour;
