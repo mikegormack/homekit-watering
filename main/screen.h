@@ -14,7 +14,6 @@ typedef struct
 {
 	uint8_t id;
 	evt_type_t type;
-	// uint16_t down_ms;
 } evt_t;
 
 class screen
