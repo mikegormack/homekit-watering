@@ -29,8 +29,8 @@ static const char *TAG = "UI";
 #define BTN_MAX_DOWN_TIME (60000)
 
 #define BTN_SHORT_PRESS_MS (25)
-#define BTN_LONG_PRESS_MS (3000)
-#define BTN_VLONG_PRESS_MS (10000)
+#define BTN_LONG_PRESS_MS (2000)
+#define BTN_VLONG_PRESS_MS (5000)
 
 #define BTN_POLL_TIME_MS (25)
 
@@ -56,10 +56,10 @@ typedef struct
 
 static btn_t buttons[] =
 	{
-		{.id = 1, .io_mask = BTN_1_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0},
-		{.id = 2, .io_mask = BTN_2_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0},
-		{.id = 3, .io_mask = BTN_3_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0},
-		{.id = 4, .io_mask = BTN_4_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0}};
+		{.id = BTN_SEL_ID, .io_mask = BTN_SEL_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0},
+		{.id = BTN_BACK_ID, .io_mask = BTN_BACK_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0},
+		{.id = BTN_UP_ID, .io_mask = BTN_UP_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0},
+		{.id = BTN_DN_ID, .io_mask = BTN_DN_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0}};
 
 #define NUM_BUTTONS ARRAY_SIZE(buttons)
 
@@ -115,11 +115,11 @@ void ui::ui_thread_entry(void *p)
 		while (xQueueReceive(ctx->m_evt_queue, &evt, pdMS_TO_TICKS(5)))
 		{
 			ESP_LOGI(TAG, "evt %d %d", evt.id, evt.type);
-			if (evt.id == 2 && evt.type == EVT_BTN_HOLD)
+			if (evt.id == BTN_SEL_ID && evt.type == EVT_BTN_HOLD)
 			{
 				ctx->m_current_scr = std::make_unique<setOnTimeScreen>(ctx->m_display);
 			}
-			else if (evt.id == 1 && evt.type == EVT_BTN_PRESS)
+			else if (evt.id == BTN_BACK_ID && evt.type == EVT_BTN_PRESS)
 			{
 				ctx->m_current_scr = std::make_unique<homeScreen>(ctx->m_display);
 			}

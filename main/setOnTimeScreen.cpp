@@ -7,6 +7,7 @@
 
 #include <SSD1306I2C.h>
 #include <icons.h>
+#include <iocfg.h>
 
 #include <esp_log.h>
 
@@ -15,6 +16,12 @@ static const char *TAG = "setOnTimeScreen";
 setOnTimeScreen::setOnTimeScreen(SSD1306I2C &display) : screen(display),
 														m_sel_field(0)
 {
+	m_ch1.hour = 22;
+	m_ch1.min = 39;
+	m_ch1.duration = 25;
+	m_ch2.hour = 6;
+	m_ch2.min = 15;
+	m_ch2.duration = 45;
 }
 
 setOnTimeScreen::~setOnTimeScreen()
@@ -36,17 +43,9 @@ void setOnTimeScreen::update()
 
 		m_display.drawString(0, 0, "Chan 1");
 
-		time_val_t tm;
-		tm.hour = 22;
-		tm.min = 39;
-		tm.duration = 25;
+		displaySetTime(1, 30, &m_ch1, ((m_sel_field <= 3) && m_blank) ? m_sel_field : 0);
 
-		displaySetTime(1, 30, &tm, ((m_sel_field <= 3) && m_blank) ? m_sel_field : 0);
-
-		tm.hour = 6;
-		tm.min = 15;
-		tm.duration = 45;
-		displaySetTime(2, 48, &tm, ((m_sel_field > 3) && m_blank) ? (m_sel_field - 3) : 0);
+		displaySetTime(2, 48, &m_ch2, ((m_sel_field > 3) && m_blank) ? (m_sel_field - 3) : 0);
 
 		m_display.display();
 	}
@@ -58,12 +57,19 @@ void setOnTimeScreen::update()
 
 void setOnTimeScreen::receiveEvent(evt_t *evt)
 {
-	if (evt->type == EVT_BTN_PRESS && evt->id == 2)
+	if (evt->type == EVT_BTN_PRESS)
 	{
-		m_sel_field++;
-		if (m_sel_field == 7)
-			m_sel_field = 1;
-		ESP_LOGI(TAG, "Sel field %d", m_sel_field);
+		if (evt->id == BTN_SEL_ID)
+		{
+			m_sel_field++;
+			if (m_sel_field == 7)
+				m_sel_field = 1;
+			ESP_LOGI(TAG, "Sel field %d", m_sel_field);
+		}
+		else
+		{
+			updateTime(m_sel_field <= 3 ? &m_ch1 : &m_ch2, evt, m_sel_field <= 3 ? m_sel_field : m_sel_field - 3);
+		}
 	}
 }
 
@@ -95,5 +101,56 @@ void setOnTimeScreen::displaySetTime(uint8_t id, uint8_t height, time_val_t *tm,
 		ss.str("");
 		ss << std::setw(2) << std::setfill('0') << +tm->duration;
 		m_display.drawString(104, height, ss.str());
+	}
+}
+
+void setOnTimeScreen::updateTime(time_val_t *tm, evt_t *evt, uint8_t field)
+{
+	if (tm == NULL || evt == NULL)
+		return;
+	if (evt->id == BTN_UP_ID)
+	{
+		if (field == 1)
+		{
+			tm->hour++;
+			if (tm->hour > 23)
+				tm->hour = 0;
+		}
+		else if (field == 2)
+		{
+			tm->min++;
+			if (tm->min > 59)
+				tm->min = 0;
+		}
+		else if (field == 3)
+		{
+			tm->duration++;
+			if (tm->duration > 59)
+				tm->duration = 0;
+		}
+	}
+	else if (evt->id == BTN_DN_ID)
+	{
+		if (field == 1)
+		{
+			if (tm->hour == 0)
+				tm->hour = 23;
+			else
+				tm->hour--;
+		}
+		else if (field == 2)
+		{
+			if (tm->min == 0)
+				tm->min = 59;
+			else
+				tm->min--;
+		}
+		else if (field == 3)
+		{
+			if (tm->duration == 0)
+				tm->duration = 59;
+			else
+				tm->duration--;
+		}
 	}
 }

@@ -345,7 +345,7 @@ static bool ioexp_init(i2c_master_bus_handle_t i2c_port)
 	ioexp_p = std::make_shared<MCP23017>(i2c_port, MCP23017_BASE_ADDRESS, IO_RES_PIN, IO_INT_PIN, -1, true);
 	if (ioexp_p->init() == false)
 		return false;
-	uint16_t input_cfg = (BTN_1_IOEXP_MASK | BTN_2_IOEXP_MASK | BTN_3_IOEXP_MASK | BTN_4_IOEXP_MASK);
+	uint16_t input_cfg = (BTN_SEL_IOEXP_MASK | BTN_BACK_IOEXP_MASK | BTN_UP_IOEXP_MASK | BTN_DN_IOEXP_MASK);
 	ESP_LOGI(TAG, "ioexp init ok");
 	if (ioexp_p->setIODIR(input_cfg) == false)
 		return false;

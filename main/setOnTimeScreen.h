@@ -21,5 +21,8 @@ public:
 private:
 	uint8_t m_sel_field;
 	bool m_blank;
+	time_val_t m_ch1;
+	time_val_t m_ch2;
 	void displaySetTime(uint8_t id, uint8_t height, time_val_t *tm, uint8_t blank);
+	void updateTime(time_val_t *tm, evt_t *evt, uint8_t field);
 };
