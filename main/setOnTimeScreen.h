@@ -25,4 +25,6 @@ private:
 	time_val_t m_ch2;
 	void displaySetTime(uint8_t id, uint8_t height, time_val_t *tm, uint8_t blank);
 	void updateTime(time_val_t *tm, evt_t *evt, uint8_t field);
+	void incremnent(time_val_t *tm, uint8_t field);
+	void decrement(time_val_t *tm, uint8_t field);
 };

@@ -34,10 +34,15 @@ void setOnTimeScreen::update()
 	{
 		m_display.clear();
 		if (!m_blank)
+		{
 			m_blank = true;
+			m_update_count = 20;
+		}
 		else
+		{
 			m_blank = false;
-		m_update_count = 50;
+			m_update_count = 25;
+		}
 
 		m_display.setFont(ArialMT_Plain_16);
 
@@ -57,19 +62,19 @@ void setOnTimeScreen::update()
 
 void setOnTimeScreen::receiveEvent(evt_t *evt)
 {
-	if (evt->type == EVT_BTN_PRESS)
+	if (evt->id == BTN_SEL_ID)
 	{
-		if (evt->id == BTN_SEL_ID)
+		if (evt->type == EVT_BTN_PRESS)
 		{
 			m_sel_field++;
 			if (m_sel_field == 7)
 				m_sel_field = 1;
 			ESP_LOGI(TAG, "Sel field %d", m_sel_field);
 		}
-		else
-		{
-			updateTime(m_sel_field <= 3 ? &m_ch1 : &m_ch2, evt, m_sel_field <= 3 ? m_sel_field : m_sel_field - 3);
-		}
+	}
+	else
+	{
+		updateTime(m_sel_field <= 3 ? &m_ch1 : &m_ch2, evt, m_sel_field <= 3 ? m_sel_field : m_sel_field - 3);
 	}
 }
 
@@ -108,49 +113,64 @@ void setOnTimeScreen::updateTime(time_val_t *tm, evt_t *evt, uint8_t field)
 {
 	if (tm == NULL || evt == NULL)
 		return;
-	if (evt->id == BTN_UP_ID)
+	if (evt->type == EVT_BTN_PRESS || evt->type == EVT_BTN_HOLD_RPT)
 	{
-		if (field == 1)
+		if (evt->id == BTN_UP_ID)
 		{
-			tm->hour++;
-			if (tm->hour > 23)
-				tm->hour = 0;
+			incremnent(tm, field);
 		}
-		else if (field == 2)
+		else if (evt->id == BTN_DN_ID)
 		{
-			tm->min++;
-			if (tm->min > 59)
-				tm->min = 0;
+			decrement(tm, field);
 		}
-		else if (field == 3)
-		{
-			tm->duration++;
-			if (tm->duration > 59)
-				tm->duration = 0;
-		}
+		m_update_count = 0;
+		update();
 	}
-	else if (evt->id == BTN_DN_ID)
+}
+
+void setOnTimeScreen::incremnent(time_val_t *tm, uint8_t field)
+{
+	if (field == 1)
 	{
-		if (field == 1)
-		{
-			if (tm->hour == 0)
-				tm->hour = 23;
-			else
-				tm->hour--;
-		}
-		else if (field == 2)
-		{
-			if (tm->min == 0)
-				tm->min = 59;
-			else
-				tm->min--;
-		}
-		else if (field == 3)
-		{
-			if (tm->duration == 0)
-				tm->duration = 59;
-			else
-				tm->duration--;
-		}
+		tm->hour++;
+		if (tm->hour > 23)
+			tm->hour = 0;
+	}
+	else if (field == 2)
+	{
+		tm->min++;
+		if (tm->min > 59)
+			tm->min = 0;
+	}
+	else if (field == 3)
+	{
+		tm->duration++;
+		if (tm->duration > 59)
+			tm->duration = 0;
+	}
+}
+
+void setOnTimeScreen::decrement(time_val_t *tm, uint8_t field)
+{
+	if (field == 1)
+	{
+		if (tm->hour == 0)
+			tm->hour = 23;
+		else
+			tm->hour--;
+	}
+	else if (field == 2)
+	{
+		if (tm->min == 0)
+			tm->min = 59;
+		else
+			tm->min--;
+	}
+	else if (field == 3)
+	{
+		if (tm->duration == 0)
+			tm->duration = 59;
+		else
+			tm->duration--;
 	}
 }

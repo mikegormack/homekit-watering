@@ -26,15 +26,18 @@ static const char *TAG = "UI";
 
 #define EVT_QUEUE_SIZE 8
 
-#define BTN_MAX_DOWN_TIME (60000)
+#define BTN_MAX_DOWN_TIME   (60000)
 
-#define BTN_SHORT_PRESS_MS (25)
-#define BTN_LONG_PRESS_MS (2000)
-#define BTN_VLONG_PRESS_MS (5000)
+#define BTN_SHORT_PRESS_MS  (25)
+#define BTN_LONG_PRESS_MS   (2000)
+#define BTN_VLONG_PRESS_MS  (5000)
 
-#define BTN_POLL_TIME_MS (25)
+#define BTN_POLL_TIME_MS    (25)
 
-#define UI_TASK_PERIOD_MS (10)
+#define BTN_REPEAT_TIME_MS  (100)
+#define BTN_REPEAT_CYCLES   (BTN_REPEAT_TIME_MS / BTN_POLL_TIME_MS)
+
+#define UI_TASK_PERIOD_MS   (10)
 
 typedef enum
 {
@@ -52,14 +55,15 @@ typedef struct
 	const uint16_t io_mask;
 	btn_state_t state;
 	uint64_t down_tick;
+	uint8_t rpt_count;
 } btn_t;
 
 static btn_t buttons[] =
 	{
-		{.id = BTN_SEL_ID, .io_mask = BTN_SEL_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0},
-		{.id = BTN_BACK_ID, .io_mask = BTN_BACK_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0},
-		{.id = BTN_UP_ID, .io_mask = BTN_UP_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0},
-		{.id = BTN_DN_ID, .io_mask = BTN_DN_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0}};
+		{.id = BTN_SEL_ID,  .io_mask = BTN_SEL_IOEXP_MASK,  .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0},
+		{.id = BTN_BACK_ID, .io_mask = BTN_BACK_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0},
+		{.id = BTN_UP_ID,   .io_mask = BTN_UP_IOEXP_MASK,   .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0},
+		{.id = BTN_DN_ID,   .io_mask = BTN_DN_IOEXP_MASK,   .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0}};
 
 #define NUM_BUTTONS ARRAY_SIZE(buttons)
 
@@ -190,6 +194,7 @@ void ui::process_buttons()
 					if ((buttons[i].state == BTN_STATE_DOWN) && (ms > BTN_LONG_PRESS_MS))
 					{
 						buttons[i].state = BTN_STATE_LONG_HOLD;
+						buttons[i].rpt_count = 0;
 						ESP_LOGI(TAG, "******** Btn %d long hold", i);
 						evt_t evt = {.id = buttons[i].id, .type = EVT_BTN_HOLD};
 						xQueueSend(m_evt_queue, &evt, 0);
@@ -200,6 +205,17 @@ void ui::process_buttons()
 						ESP_LOGI(TAG, "********** Btn %d v long hold", i);
 						evt_t evt = {.id = buttons[i].id, .type = EVT_BTN_LONG_HOLD};
 						xQueueSend(m_evt_queue, &evt, 0);
+					}
+					else if ((buttons[i].state == BTN_STATE_LONG_HOLD) || (buttons[i].state == BTN_STATE_VLONG_HOLD))
+					{
+						buttons[i].rpt_count++;
+						if (buttons[i].rpt_count == BTN_REPEAT_CYCLES)
+						{
+							ESP_LOGI(TAG, "******** Btn %d hold rpt", i);
+							evt_t evt = {.id = buttons[i].id, .type = EVT_BTN_HOLD_RPT};
+							xQueueSend(m_evt_queue, &evt, 0);
+							buttons[i].rpt_count = 0;
+						}
 					}
 				}
 				else
@@ -212,8 +228,6 @@ void ui::process_buttons()
 						xQueueSend(m_evt_queue, &evt, 0);
 					}
 					buttons[i].state = BTN_STATE_UP;
-					/*if (btnCallback != NULL)
-						btnCallback(&buttons[i]);*/
 				}
 			}
 			else

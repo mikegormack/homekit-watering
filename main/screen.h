@@ -7,6 +7,7 @@ typedef enum
 {
 	EVT_BTN_PRESS,
 	EVT_BTN_HOLD,
+	EVT_BTN_HOLD_RPT,
 	EVT_BTN_LONG_HOLD,
 } evt_type_t;
 
