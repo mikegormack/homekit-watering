@@ -8,6 +8,7 @@
 #include <esp_timer.h>
 
 #include <homeScreen.h>
+#include <menuScreen.h>
 #include <setOnTimeScreen.h>
 
 #include <ctime>
@@ -125,7 +126,7 @@ void ui::ui_thread_entry(void *p)
 			}
 			else if (evt.id == BTN_BACK_ID && evt.type == EVT_BTN_PRESS)
 			{
-				ctx->m_current_scr = std::make_unique<homeScreen>(ctx->m_display);
+				ctx->m_current_scr = std::make_unique<menuScreen>(ctx->m_display);
 			}
 			else
 			{

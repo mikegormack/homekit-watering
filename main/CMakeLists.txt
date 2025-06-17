@@ -13,9 +13,6 @@ set (req
 
 set(incl
 	"."
-	#${HOMEKIT_PATH}/components
-	#${HOMEKIT_PATH}/components/homekit
-	#${HOMEKIT_PATH}/examples/common
 	${CMAKE_CURRENT_SOURCE_DIR}
 )
 
@@ -23,6 +20,7 @@ set (srcs
 	app_main.cpp
 	ui.cpp
 	homeScreen.cpp
+	menuScreen.cpp
 	setOnTimeScreen.cpp
 )
 
