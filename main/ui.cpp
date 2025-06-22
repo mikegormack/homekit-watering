@@ -122,11 +122,11 @@ void ui::ui_thread_entry(void *p)
 			ESP_LOGI(TAG, "evt %d %d", evt.id, evt.type);
 			if (evt.id == BTN_SEL_ID && evt.type == EVT_BTN_HOLD)
 			{
-				ctx->m_current_scr = std::make_unique<setOnTimeScreen>(ctx->m_display);
+				ctx->m_current_scr = std::make_unique<menuScreen>(ctx->m_display);
 			}
 			else if (evt.id == BTN_BACK_ID && evt.type == EVT_BTN_PRESS)
 			{
-				ctx->m_current_scr = std::make_unique<menuScreen>(ctx->m_display);
+				ctx->m_current_scr = std::make_unique<homeScreen>(ctx->m_display);
 			}
 			else
 			{
