@@ -51,15 +51,15 @@ void SettingsMenu::update()
 		if (next_item > (m_menu_items.size() - 1))
 			next_item = 0;
 
-		m_display.drawBitmap(1, 0, m_menu_items[prev_item].icon, 16, 16);
-		m_display.drawString(21, 0, m_menu_items[prev_item].name);
+		m_display.drawBitmap(2, 0, m_menu_items[prev_item].icon, 16, 16);
+		m_display.drawString(22, 0, m_menu_items[prev_item].name);
 
 		m_display.drawRect(0, 20, 128, 24);
-		m_display.drawBitmap(1, 24, m_menu_items[m_sel_item].icon, 16, 16);
-		m_display.drawString(21, 24, m_menu_items[m_sel_item].name);
+		m_display.drawBitmap(2, 24, m_menu_items[m_sel_item].icon, 16, 16);
+		m_display.drawString(22, 24, m_menu_items[m_sel_item].name);
 
-		m_display.drawBitmap(1, 48, m_menu_items[next_item].icon, 16, 16);
-		m_display.drawString(21, 48, m_menu_items[next_item].name);
+		m_display.drawBitmap(2, 48, m_menu_items[next_item].icon, 16, 16);
+		m_display.drawString(22, 48, m_menu_items[next_item].name);
 		m_display.display();
 		m_refresh = false;
 	}

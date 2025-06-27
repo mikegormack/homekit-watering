@@ -1,9 +1,11 @@
 #pragma once
 
-#include <screen.h>
+#include <Screen.h>
+#include <MenuScreen.h>
 #include <TimeTypes.h>
 
 #include <vector>
+#include <memory>
 
 typedef enum
 {
@@ -37,4 +39,5 @@ public:
 private:
 	std::vector<menu_item_t> m_menu_items;
 	uint8_t m_sel_item;
+	std::unique_ptr<MenuScreen> m_menu_scr;
 };
