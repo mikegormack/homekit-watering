@@ -3,7 +3,8 @@
 #include <sstream>
 #include <iomanip>
 
-#include <setOnTimeScreen.h>
+#include <TimeTypes.h>
+#include <SetEvtTimeScreen.h>
 
 #include <SSD1306I2C.h>
 #include <icons.h>
@@ -11,24 +12,19 @@
 
 #include <esp_log.h>
 
-static const char *TAG = "setOnTimeScreen";
+static const char *TAG = "SetEvtTimeScreen";
 
-setOnTimeScreen::setOnTimeScreen(SSD1306I2C &display) : screen(display),
-														m_sel_field(0)
-{
-	m_ch1.hour = 22;
-	m_ch1.min = 39;
-	m_ch1.duration = 25;
-	m_ch2.hour = 6;
-	m_ch2.min = 15;
-	m_ch2.duration = 45;
-}
-
-setOnTimeScreen::~setOnTimeScreen()
+SetEvtTimeScreen::SetEvtTimeScreen(SSD1306I2C &display, ch_time_t &val) : MenuScreen(display),
+																		  m_val(val),
+																		  m_sel_field(0)
 {
 }
 
-void setOnTimeScreen::update()
+SetEvtTimeScreen::~SetEvtTimeScreen()
+{
+}
+
+void SetEvtTimeScreen::update()
 {
 	if (m_update_count == 0)
 	{
@@ -48,9 +44,9 @@ void setOnTimeScreen::update()
 
 		m_display.drawString(0, 0, "Chan 1");
 
-		displaySetTime(1, 30, &m_ch1, ((m_sel_field <= 3) && m_blank) ? m_sel_field : 0);
+		displaySetTime(1, 30, &m_val.evt[0], ((m_sel_field <= 3) && m_blank) ? m_sel_field : 0);
 
-		displaySetTime(2, 48, &m_ch2, ((m_sel_field > 3) && m_blank) ? (m_sel_field - 3) : 0);
+		displaySetTime(2, 48, &m_val.evt[1], ((m_sel_field > 3) && m_blank) ? (m_sel_field - 3) : 0);
 
 		m_display.display();
 	}
@@ -60,7 +56,7 @@ void setOnTimeScreen::update()
 	}
 }
 
-void setOnTimeScreen::receiveEvent(evt_t *evt)
+void SetEvtTimeScreen::receiveEvent(evt_t *evt)
 {
 	if (evt->id == BTN_SEL_ID)
 	{
@@ -74,11 +70,11 @@ void setOnTimeScreen::receiveEvent(evt_t *evt)
 	}
 	else
 	{
-		updateTime(m_sel_field <= 3 ? &m_ch1 : &m_ch2, evt, m_sel_field <= 3 ? m_sel_field : m_sel_field - 3);
+		updateTime(m_sel_field <= 3 ? &m_val.evt[0] : &m_val.evt[1], evt, m_sel_field <= 3 ? m_sel_field : m_sel_field - 3);
 	}
 }
 
-void setOnTimeScreen::displaySetTime(uint8_t id, uint8_t height, time_val_t *tm, uint8_t blank)
+void SetEvtTimeScreen::displaySetTime(uint8_t id, uint8_t height, time_evt_t *tm, uint8_t blank)
 {
 	std::stringstream ss;
 	ss << +id << '.';
@@ -109,7 +105,7 @@ void setOnTimeScreen::displaySetTime(uint8_t id, uint8_t height, time_val_t *tm,
 	}
 }
 
-void setOnTimeScreen::updateTime(time_val_t *tm, evt_t *evt, uint8_t field)
+void SetEvtTimeScreen::updateTime(time_evt_t *tm, evt_t *evt, uint8_t field)
 {
 	if (tm == NULL || evt == NULL)
 		return;
@@ -128,7 +124,7 @@ void setOnTimeScreen::updateTime(time_val_t *tm, evt_t *evt, uint8_t field)
 	}
 }
 
-void setOnTimeScreen::incremnent(time_val_t *tm, uint8_t field)
+void SetEvtTimeScreen::incremnent(time_evt_t *tm, uint8_t field)
 {
 	if (field == 1)
 	{
@@ -150,7 +146,7 @@ void setOnTimeScreen::incremnent(time_val_t *tm, uint8_t field)
 	}
 }
 
-void setOnTimeScreen::decrement(time_val_t *tm, uint8_t field)
+void SetEvtTimeScreen::decrement(time_evt_t *tm, uint8_t field)
 {
 	if (field == 1)
 	{

@@ -1,12 +1,12 @@
 #pragma once
 
-#include <screen.h>
+#include <Screen.h>
 
-class homeScreen : public screen
+class HomeScreen : public Screen
 {
 public:
-	homeScreen(SSD1306I2C &display);
-	~homeScreen();
+	HomeScreen(SSD1306I2C &display);
+	~HomeScreen();
 
 	void update() override;
 	void receiveEvent(evt_t *evt) override;

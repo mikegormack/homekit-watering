@@ -1,29 +1,21 @@
 #pragma once
 
-#include <screen.h>
+#include <Screen.h>
+#include <MenuScreenCtx.h>
 
-#include <vector>
-
-
-typedef struct
-{
-	const uint8_t* icon;
-	const char* name;
-} menu_item_t;
-
-extern const menu_item_t menu_items_array[];
-extern const size_t menu_items_count;
-
-class menuScreen : public screen
+class MenuScreen : public Screen
 {
 public:
-	menuScreen(SSD1306I2C &display);
-	~menuScreen();
+	MenuScreen(SSD1306I2C &display, MenuScreenCtx* ctx) :
+		Screen(display),
+		m_ctx(ctx)
+	{
+	}
 
-	void update() override;
-	void receiveEvent(evt_t *evt) override;
+	~MenuScreen()
+	{
+	}
 
-private:
-	std::vector<menu_item_t> m_menu_items;
-	uint8_t m_sel_item;
+protected:
+	MenuScreenCtx* m_ctx;
 };

@@ -7,9 +7,8 @@
 #include <esp_log.h>
 #include <esp_timer.h>
 
-#include <homeScreen.h>
-#include <menuScreen.h>
-#include <setOnTimeScreen.h>
+#include <HomeScreen.h>
+#include <SettingsMenu.h>
 
 #include <ctime>
 #include <sstream>
@@ -21,24 +20,24 @@
 
 #include <iocfg.h>
 
-#include <ui.h>
+#include <UI.h>
 
 static const char *TAG = "UI";
 
 #define EVT_QUEUE_SIZE 8
 
-#define BTN_MAX_DOWN_TIME   (60000)
+#define BTN_MAX_DOWN_TIME (60000)
 
-#define BTN_SHORT_PRESS_MS  (25)
-#define BTN_LONG_PRESS_MS   (2000)
-#define BTN_VLONG_PRESS_MS  (5000)
+#define BTN_SHORT_PRESS_MS (25)
+#define BTN_LONG_PRESS_MS (2000)
+#define BTN_VLONG_PRESS_MS (5000)
 
-#define BTN_POLL_TIME_MS    (25)
+#define BTN_POLL_TIME_MS (25)
 
-#define BTN_REPEAT_TIME_MS  (100)
-#define BTN_REPEAT_CYCLES   (BTN_REPEAT_TIME_MS / BTN_POLL_TIME_MS)
+#define BTN_REPEAT_TIME_MS (100)
+#define BTN_REPEAT_CYCLES (BTN_REPEAT_TIME_MS / BTN_POLL_TIME_MS)
 
-#define UI_TASK_PERIOD_MS   (10)
+#define UI_TASK_PERIOD_MS (10)
 
 typedef enum
 {
@@ -61,18 +60,18 @@ typedef struct
 
 static btn_t buttons[] =
 	{
-		{.id = BTN_SEL_ID,  .io_mask = BTN_SEL_IOEXP_MASK,  .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0},
+		{.id = BTN_SEL_ID, .io_mask = BTN_SEL_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0},
 		{.id = BTN_BACK_ID, .io_mask = BTN_BACK_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0},
-		{.id = BTN_UP_ID,   .io_mask = BTN_UP_IOEXP_MASK,   .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0},
-		{.id = BTN_DN_ID,   .io_mask = BTN_DN_IOEXP_MASK,   .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0}};
+		{.id = BTN_UP_ID, .io_mask = BTN_UP_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0},
+		{.id = BTN_DN_ID, .io_mask = BTN_DN_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0}};
 
 #define NUM_BUTTONS ARRAY_SIZE(buttons)
 
-ui::ui(SSD1306I2C &display, std::shared_ptr<MCP23017> io_exp) : m_display(display),
+UI::UI(SSD1306I2C &display, std::shared_ptr<MCP23017> io_exp) : m_display(display),
 																m_io_exp(io_exp)
 {
 	m_io_exp->setEventCallback(io_int_callback, this);
-	m_current_scr = std::make_unique<homeScreen>(display);
+	m_current_scr = std::make_unique<HomeScreen>(display);
 
 	const esp_timer_create_args_t timer_args = {
 		.callback = &button_tmr_handler,
@@ -98,7 +97,7 @@ ui::ui(SSD1306I2C &display, std::shared_ptr<MCP23017> io_exp) : m_display(displa
 	}
 }
 
-ui::~ui()
+UI::~UI()
 {
 	if (m_evt_queue != nullptr)
 		vQueueDelete(m_evt_queue);
@@ -106,10 +105,10 @@ ui::~ui()
 	esp_timer_delete(m_btn_timer);
 }
 
-void ui::ui_thread_entry(void *p)
+void UI::ui_thread_entry(void *p)
 {
 	ESP_LOGI(TAG, "Started");
-	ui *ctx = (ui *)p;
+	UI *ctx = (UI *)p;
 	evt_t evt;
 	while (1)
 	{
@@ -122,11 +121,11 @@ void ui::ui_thread_entry(void *p)
 			ESP_LOGI(TAG, "evt %d %d", evt.id, evt.type);
 			if (evt.id == BTN_SEL_ID && evt.type == EVT_BTN_HOLD)
 			{
-				ctx->m_current_scr = std::make_unique<menuScreen>(ctx->m_display);
+				ctx->m_current_scr = std::make_unique<SettingsMenu>(ctx->m_display);
 			}
 			else if (evt.id == BTN_BACK_ID && evt.type == EVT_BTN_PRESS)
 			{
-				ctx->m_current_scr = std::make_unique<homeScreen>(ctx->m_display);
+				ctx->m_current_scr = std::make_unique<HomeScreen>(ctx->m_display);
 			}
 			else
 			{
@@ -136,23 +135,23 @@ void ui::ui_thread_entry(void *p)
 	}
 }
 
-void ui::io_int_callback(uint16_t flags, uint16_t capture, void *user_data)
+void UI::io_int_callback(uint16_t flags, uint16_t capture, void *user_data)
 {
-	ui *ctx = (ui *)user_data;
+	UI *ctx = (UI *)user_data;
 	ESP_LOGI(TAG, "Int cb %d %d", flags, capture);
 	ctx->process_buttons();
 }
 
-void ui::button_tmr_handler(void *arg)
+void UI::button_tmr_handler(void *arg)
 {
 	if (arg != nullptr)
 	{
-		ui *it = (ui *)arg;
+		UI *it = (UI *)arg;
 		it->process_buttons();
 	}
 }
 
-void ui::process_buttons()
+void UI::process_buttons()
 {
 	std::lock_guard<std::mutex> lock(m_btn_mutex);
 	uint16_t pin = 0;

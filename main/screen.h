@@ -35,16 +35,17 @@ const uint8_t timer_icon16x16[32] = TIMER_ICON16X16;
 const uint8_t tool_icon16x16[32] = TOOL_ICON16X16;
 const uint8_t water_tap_icon16x16[32] = WATER_TAP_ICON16X16;
 
-class screen
+class Screen
 {
 public:
-	screen(SSD1306I2C &display) : m_display(display),
-								  m_update_count(0)
+	Screen(SSD1306I2C &display) : m_display(display),
+								  m_update_count(0),
+								  m_refresh(true)
 	{
 		m_display.clear();
 	}
 
-	~screen()
+	~Screen()
 	{
 	}
 
@@ -56,4 +57,5 @@ protected:
 	SSD1306I2C &m_display;
 
 	int m_update_count;
+	bool m_refresh;
 };

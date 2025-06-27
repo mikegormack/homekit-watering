@@ -5,20 +5,20 @@
 
 #include <esp_wifi.h>
 
-#include <homeScreen.h>
+#include <HomeScreen.h>
 
 #include <SSD1306I2C.h>
 #include <icons.h>
 
-homeScreen::homeScreen(SSD1306I2C &display) : screen(display)
+HomeScreen::HomeScreen(SSD1306I2C &display) : Screen(display)
 {
 }
 
-homeScreen::~homeScreen()
+HomeScreen::~HomeScreen()
 {
 }
 
-void homeScreen::update()
+void HomeScreen::update()
 {
 	if (m_update_count == 0)
 	{
@@ -54,11 +54,11 @@ void homeScreen::update()
 	}
 }
 
-void homeScreen::receiveEvent(evt_t *evt)
+void HomeScreen::receiveEvent(evt_t *evt)
 {
 }
 
-void homeScreen::update_clock()
+void HomeScreen::update_clock()
 {
 	std::time_t now;
 	std::time(&now);
@@ -85,7 +85,7 @@ void homeScreen::update_clock()
 	m_display.drawString(76, 0, ss.str());
 }
 
-void homeScreen::show_wifi()
+void HomeScreen::show_wifi()
 {
 	wifi_ap_record_t ap_info;
 	esp_err_t ret = esp_wifi_sta_get_ap_info(&ap_info);

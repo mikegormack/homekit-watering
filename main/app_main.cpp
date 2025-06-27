@@ -45,7 +45,7 @@
 #include <app_wifi.h>
 #include <app_hap_setup_payload.h>
 
-#include <ui.h>
+#include <UI.h>
 
 #include <SSD1306I2C.h>
 #include <MCP23017.h>
@@ -58,7 +58,7 @@ char server_cert[] = {};
 static hap_serv_t *service;
 
 std::unique_ptr<SSD1306I2C> disp_p;
-std::unique_ptr<ui> ui_p;
+std::unique_ptr<UI> ui_p;
 std::shared_ptr<MCP23017> ioexp_p;
 
 static const char *TAG = "HAP Sprinkler";
@@ -372,20 +372,18 @@ static void sprinkler_thread_entry(void *p)
 	esp_err_t ret = ESP_OK;
 
 	i2c_master_bus_config_t i2c_bus_config =
-	{
-		.i2c_port = -1,
-		.sda_io_num = I2C_SDA_PIN,
-		.scl_io_num = I2C_SCL_PIN,
-		.clk_source = I2C_CLK_SRC_DEFAULT,
-		.glitch_ignore_cnt = 7,
-		.intr_priority = 0,
-		.trans_queue_depth = 0,
-		.flags =
 		{
-			.enable_internal_pullup = 1,
-			.allow_pd = 0
-		}
-	};
+			.i2c_port = -1,
+			.sda_io_num = I2C_SDA_PIN,
+			.scl_io_num = I2C_SCL_PIN,
+			.clk_source = I2C_CLK_SRC_DEFAULT,
+			.glitch_ignore_cnt = 7,
+			.intr_priority = 0,
+			.trans_queue_depth = 0,
+			.flags =
+				{
+					.enable_internal_pullup = 1,
+					.allow_pd = 0}};
 	i2c_master_bus_handle_t bus_handle;
 
 	ret = i2c_new_master_bus(&i2c_bus_config, &bus_handle);
@@ -407,8 +405,8 @@ static void sprinkler_thread_entry(void *p)
 		disp_p->setContrast(255);
 		disp_p->flipScreenVertically();
 		disp_p->setLogBuffer(5, 30);
-		ui_p = std::make_unique<ui>(*disp_p, ioexp_p);
-		// ui_p->homescreen();
+		ui_p = std::make_unique<UI>(*disp_p, ioexp_p);
+		// ui_p->HomeScreen();
 		// display.resetDisplay();
 		// display.setColor(BLACK);
 
