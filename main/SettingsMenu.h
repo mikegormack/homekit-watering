@@ -16,16 +16,12 @@ typedef enum
 	// Add others
 } screen_type_t;
 
-typedef struct
+struct menu_item
 {
-	screen_type_t scr_type;
 	const uint8_t *icon;
 	const char *name;
-
-} menu_item_t;
-
-extern const menu_item_t menu_items_array[];
-extern const size_t menu_items_count;
+	const std::vector<menu_item>* sub_menu;
+};
 
 class SettingsMenu : public Screen
 {
@@ -37,7 +33,9 @@ public:
 	void receiveEvent(evt_t *evt) override;
 
 private:
-	std::vector<menu_item_t> m_menu_items;
+	static const std::vector<menu_item> s_main_menu;
+	static const std::vector<menu_item> s_wifi_menu;
+
 	uint8_t m_sel_item;
-	std::unique_ptr<MenuScreen> m_menu_scr;
+	const std::vector<menu_item>* m_cur_menu;
 };
