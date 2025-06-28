@@ -38,4 +38,5 @@ private:
 
 	uint8_t m_sel_item;
 	const std::vector<menu_item>* m_cur_menu;
+	std::vector<const std::vector<menu_item>*> m_menu_stack;
 };

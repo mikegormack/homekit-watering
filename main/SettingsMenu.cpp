@@ -96,6 +96,7 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 			if (m_cur_menu->at(m_sel_item).sub_menu != nullptr)
 			{
 				ESP_LOGI(TAG, "Enter submenu");
+				m_menu_stack.push_back(m_cur_menu);
 				m_cur_menu = m_cur_menu->at(m_sel_item).sub_menu;
 				m_sel_item = 0;
 			}
@@ -119,7 +120,11 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 		}
 		else if (evt->id == BTN_BACK_ID)
 		{
-
+			if (m_menu_stack.empty() == false)
+			{
+				m_cur_menu = m_menu_stack.back();
+				m_menu_stack.pop_back();
+			}
 		}
 	}
 }

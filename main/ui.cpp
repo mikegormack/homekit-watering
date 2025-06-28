@@ -119,6 +119,7 @@ void UI::ui_thread_entry(void *p)
 		while (xQueueReceive(ctx->m_evt_queue, &evt, pdMS_TO_TICKS(5)))
 		{
 			ESP_LOGI(TAG, "evt %d %d", evt.id, evt.type);
+			//if (ctx->m_current_scr == )
 			if (evt.id == BTN_SEL_ID && evt.type == EVT_BTN_HOLD)
 			{
 				ctx->m_current_scr = std::make_unique<SettingsMenu>(ctx->m_display);
