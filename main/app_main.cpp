@@ -45,6 +45,7 @@
 #include <app_wifi.h>
 #include <app_hap_setup_payload.h>
 
+#include <OutputChannels.h>
 #include <UI.h>
 
 #include <SSD1306I2C.h>
@@ -57,9 +58,12 @@ char server_cert[] = {};
 
 static hap_serv_t *service;
 
-std::unique_ptr<SSD1306I2C> disp_p;
-std::unique_ptr<UI> ui_p;
-std::shared_ptr<MCP23017> ioexp_p;
+static std::unique_ptr<SSD1306I2C> disp_p;
+static std::unique_ptr<UI> ui_p;
+static std::shared_ptr<MCP23017> ioexp_p;
+static OutputChannels out_ch;
+
+static MenuCtx menu_ctx(out_ch);
 
 static const char *TAG = "HAP Sprinkler";
 
@@ -405,7 +409,7 @@ static void sprinkler_thread_entry(void *p)
 		disp_p->setContrast(255);
 		disp_p->flipScreenVertically();
 		disp_p->setLogBuffer(5, 30);
-		ui_p = std::make_unique<UI>(*disp_p, ioexp_p);
+		ui_p = std::make_unique<UI>(*disp_p, ioexp_p, menu_ctx);
 		// ui_p->HomeScreen();
 		// display.resetDisplay();
 		// display.setColor(BLACK);

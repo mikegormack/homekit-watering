@@ -1,14 +1,14 @@
 #pragma once
 
 #include <Screen.h>
-#include <MenuScreen.h>
-#include <TimeTypes.h>
+#include <MenuCtx.h>
 
 #include <vector>
 #include <memory>
 
 typedef enum
 {
+	SCREEN_NONE,
 	SCREEN_TIME,
 	SCREEN_MOIST,
 	SCREEN_WIFI,
@@ -21,22 +21,29 @@ struct menu_item
 	const uint8_t *icon;
 	const char *name;
 	const std::vector<menu_item>* sub_menu;
+	std::unique_ptr<Screen> screen;
 };
 
 class SettingsMenu : public Screen
 {
 public:
-	SettingsMenu(SSD1306I2C &display);
+	SettingsMenu(SSD1306I2C &display, MenuCtx& menu_ctx);
 	~SettingsMenu();
 
 	void update() override;
 	void receiveEvent(evt_t *evt) override;
 
 private:
-	static const std::vector<menu_item> s_main_menu;
-	static const std::vector<menu_item> s_wifi_menu;
-
+	MenuCtx& m_menu_ctx;
 	uint8_t m_sel_item;
+
+	std::vector<menu_item> m_menu_base;
+	std::vector<menu_item> m_menu_wifi;
+
 	const std::vector<menu_item>* m_cur_menu;
 	std::vector<const std::vector<menu_item>*> m_menu_stack;
+	std::vector<uint8_t> m_ind_stack;
+	Screen* m_scr;
+
+	void createMenu(void);
 };

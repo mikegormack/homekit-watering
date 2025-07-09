@@ -67,8 +67,10 @@ static btn_t buttons[] =
 
 #define NUM_BUTTONS ARRAY_SIZE(buttons)
 
-UI::UI(SSD1306I2C &display, std::shared_ptr<MCP23017> io_exp) : m_display(display),
-																m_io_exp(io_exp)
+UI::UI(SSD1306I2C &display, std::shared_ptr<MCP23017> io_exp, MenuCtx& menu_ctx) :
+	m_display(display),
+	m_io_exp(io_exp),
+	m_menu_ctx(menu_ctx)
 {
 	m_io_exp->setEventCallback(io_int_callback, this);
 	m_current_scr = std::make_unique<HomeScreen>(display);
@@ -119,19 +121,31 @@ void UI::ui_thread_entry(void *p)
 		while (xQueueReceive(ctx->m_evt_queue, &evt, pdMS_TO_TICKS(5)))
 		{
 			ESP_LOGI(TAG, "evt %d %d", evt.id, evt.type);
-			//if (ctx->m_current_scr == )
-			if (evt.id == BTN_SEL_ID && evt.type == EVT_BTN_HOLD)
+			if (ctx->m_menu_active)
 			{
-				ctx->m_current_scr = std::make_unique<SettingsMenu>(ctx->m_display);
+				ctx->m_current_scr->receiveEvent(&evt);
+				if (ctx->m_current_scr->isClosed())
+				{
+					ctx->m_current_scr = std::make_unique<HomeScreen>(ctx->m_display);
+					ctx->m_menu_active = false;
+				}
 			}
-			else if (evt.id == BTN_BACK_ID && evt.type == EVT_BTN_PRESS)
+			else
+			{
+				if (evt.id == BTN_SEL_ID && evt.type == EVT_BTN_HOLD)
+				{
+					ctx->m_current_scr = std::make_unique<SettingsMenu>(ctx->m_display, ctx->m_menu_ctx);
+					ctx->m_menu_active = true;
+				}
+			}
+			/*else if (evt.id == BTN_BACK_ID && evt.type == EVT_BTN_PRESS)
 			{
 				ctx->m_current_scr = std::make_unique<HomeScreen>(ctx->m_display);
 			}
 			else
 			{
 				ctx->m_current_scr->receiveEvent(&evt);
-			}
+			}*/
 		}
 	}
 }

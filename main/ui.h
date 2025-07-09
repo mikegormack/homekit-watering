@@ -9,6 +9,7 @@
 
 #include <Screen.h>
 #include <HomeScreen.h>
+#include <MenuCtx.h>
 
 #include <memory>
 #include <mutex>
@@ -16,15 +17,17 @@
 class UI
 {
 public:
-	UI(SSD1306I2C &display, std::shared_ptr<MCP23017> io_exp);
+	UI(SSD1306I2C &display, std::shared_ptr<MCP23017> io_exp, MenuCtx& menu_ctx);
 	~UI();
 
 	std::unique_ptr<Screen> m_current_scr;
 
 private:
-	SSD1306I2C &m_display;
+	SSD1306I2C& m_display;
 	std::shared_ptr<MCP23017> m_io_exp;
+	MenuCtx& m_menu_ctx;
 	esp_timer_handle_t m_btn_timer;
+	bool m_menu_active = false;
 
 	std::mutex m_btn_mutex;
 

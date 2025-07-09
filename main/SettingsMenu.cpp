@@ -3,6 +3,7 @@
 #include <iomanip>
 
 #include <SettingsMenu.h>
+#include <SetEvtTimeScreen.h>
 
 #include <SSD1306I2C.h>
 #include <icons.h>
@@ -12,42 +13,47 @@
 
 static const char *TAG = "SettingsMenu";
 
-const std::vector<menu_item> SettingsMenu::s_main_menu =
-{
-	{.icon = clock_icon16x16,       .name = "CH1 Time",     .sub_menu = nullptr },
-	{.icon = clock_icon16x16,       .name = "CH2 Time",     .sub_menu = nullptr },
-	{.icon = moisture_icon16x16,    .name = "Moisture Thr", .sub_menu = nullptr },
-	{.icon = wifi1_icon16x16,       .name = "WIFI",         .sub_menu = &s_wifi_menu },
-	{.icon = tool_icon16x16,        .name = "Info",         .sub_menu = nullptr }
-};
-
-const std::vector<menu_item> SettingsMenu::s_wifi_menu =
-{
-	{.icon = wifi1_icon16x16,       .name = "Status",       .sub_menu = nullptr },
-	{.icon = tool_icon16x16,        .name = "Provision",    .sub_menu = nullptr }
-};
-
-/*#define MENU_ITEMS {                                                                \
-	{.scr_type = SCREEN_TIME, .icon = clock_icon16x16, .name = "CH1 Time"},         \
-	{.scr_type = SCREEN_TIME, .icon = clock_icon16x16, .name = "CH2 Time"},         \
-	{.scr_type = SCREEN_MOIST, .icon = moisture_icon16x16, .name = "Moisture Thr"}, \
-	{.scr_type = SCREEN_WIFI, .icon = wifi1_icon16x16, .name = "WIFI"},             \
-	{.scr_type = SCREEN_INFO, .icon = tool_icon16x16, .name = "Info"},              \
-}*/
-
-SettingsMenu::SettingsMenu(SSD1306I2C &display) : Screen(display),
+SettingsMenu::SettingsMenu(SSD1306I2C &display, MenuCtx& menu_ctx) :
+	Screen(display),
+	m_menu_ctx(menu_ctx),
 	m_sel_item(0),
-	m_cur_menu(&s_main_menu)
+	m_cur_menu(&m_menu_base),
+	m_scr(nullptr)
 {
+	createMenu();
 }
 
 SettingsMenu::~SettingsMenu()
 {
 }
 
+void SettingsMenu::createMenu()
+{
+	m_menu_wifi.emplace_back(wifi1_icon16x16, "Status", nullptr, nullptr);
+	m_menu_wifi.emplace_back(wifi1_icon16x16, "Provision", nullptr, nullptr);
+
+	auto ch = m_menu_ctx.m_out_ch.getChannel(CH_ID_WATER_1);
+	if (ch != nullptr)
+	{
+		m_menu_base.emplace_back(clock_icon16x16, "CH1 Time", nullptr, std::make_unique<SetEvtTimeScreen>(m_display, *ch));
+	}
+	ch = m_menu_ctx.m_out_ch.getChannel(CH_ID_WATER_2);
+	if (ch != nullptr)
+	{
+		m_menu_base.emplace_back(clock_icon16x16, "CH2 Time", nullptr, std::make_unique<SetEvtTimeScreen>(m_display, *ch));
+	}
+	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Thr", nullptr, nullptr);
+	m_menu_base.emplace_back(clock_icon16x16, "WIFI", &m_menu_wifi, nullptr);
+	m_menu_base.emplace_back(clock_icon16x16, "Info", nullptr, nullptr);
+}
+
 void SettingsMenu::update()
 {
-	if (m_refresh)
+	if (m_scr != nullptr)
+	{
+		m_scr->update();
+	}
+	else if (m_refresh)
 	{
 		ESP_LOGI(TAG, "Refresh");
 		if (m_cur_menu == nullptr)
@@ -55,7 +61,6 @@ void SettingsMenu::update()
 			ESP_LOGE(TAG, "Menu null");
 			return;
 		}
-		ESP_LOGI(TAG, "Menu sz=%d", m_cur_menu->size());
 		m_display.clear();
 		m_display.setFont(ArialMT_Plain_16);
 
@@ -88,8 +93,17 @@ void SettingsMenu::update()
 
 void SettingsMenu::receiveEvent(evt_t *evt)
 {
-	// if menu screen displayed pass on event to it.
-	if (evt->type == EVT_BTN_PRESS)
+	if (m_scr != nullptr)
+	{
+		m_scr->receiveEvent(evt);
+		if (m_scr->isClosed())
+		{
+			ESP_LOGI(TAG, "Close menu scr");
+			m_scr = nullptr;
+			m_refresh = true;
+		}
+	}
+	else if (evt->type == EVT_BTN_PRESS)
 	{
 		if (evt->id == BTN_SEL_ID)
 		{
@@ -97,8 +111,16 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 			{
 				ESP_LOGI(TAG, "Enter submenu");
 				m_menu_stack.push_back(m_cur_menu);
+				m_ind_stack.push_back(m_sel_item);
 				m_cur_menu = m_cur_menu->at(m_sel_item).sub_menu;
 				m_sel_item = 0;
+			}
+			else
+			{
+				if (m_cur_menu->at(m_sel_item).screen != nullptr)
+				{
+					m_scr = m_cur_menu->at(m_sel_item).screen.get();
+				}
 			}
 			m_refresh = true;
 		}
@@ -123,7 +145,14 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 			if (m_menu_stack.empty() == false)
 			{
 				m_cur_menu = m_menu_stack.back();
+				m_sel_item = m_ind_stack.back();
 				m_menu_stack.pop_back();
+				m_ind_stack.pop_back();
+				m_refresh = true;
+			}
+			else
+			{
+				m_closed = true;
 			}
 		}
 	}

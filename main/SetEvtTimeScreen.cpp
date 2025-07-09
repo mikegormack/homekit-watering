@@ -3,7 +3,6 @@
 #include <sstream>
 #include <iomanip>
 
-#include <TimeTypes.h>
 #include <SetEvtTimeScreen.h>
 
 #include <SSD1306I2C.h>
@@ -14,9 +13,10 @@
 
 static const char *TAG = "SetEvtTimeScreen";
 
-SetEvtTimeScreen::SetEvtTimeScreen(SSD1306I2C &display, ch_time_t &val) : MenuScreen(display),
-																		  m_val(val),
-																		  m_sel_field(0)
+SetEvtTimeScreen::SetEvtTimeScreen(SSD1306I2C &display, OutputChannel& ch) :
+	Screen(display),
+	m_val(ch),
+	m_sel_field(0)
 {
 }
 
@@ -42,8 +42,8 @@ void SetEvtTimeScreen::update()
 
 		m_display.setFont(ArialMT_Plain_16);
 
-		m_display.drawString(0, 0, "Chan 1");
-
+		m_display.drawString(0, 0, "Set Time:");
+		m_display.drawString(64, 0, m_val.m_name);
 		displaySetTime(1, 30, &m_val.evt[0], ((m_sel_field <= 3) && m_blank) ? m_sel_field : 0);
 
 		displaySetTime(2, 48, &m_val.evt[1], ((m_sel_field > 3) && m_blank) ? (m_sel_field - 3) : 0);
@@ -65,8 +65,16 @@ void SetEvtTimeScreen::receiveEvent(evt_t *evt)
 			m_sel_field++;
 			if (m_sel_field == 7)
 				m_sel_field = 1;
-			ESP_LOGI(TAG, "Sel field %d", m_sel_field);
 		}
+		else if (evt->type == EVT_BTN_HOLD)
+		{
+			m_val.save();
+			m_closed = true;
+		}
+	}
+	else if (evt->id == BTN_BACK_ID && evt->type == EVT_BTN_PRESS)
+	{
+		m_closed = true;
 	}
 	else
 	{
@@ -113,7 +121,7 @@ void SetEvtTimeScreen::updateTime(time_evt_t *tm, evt_t *evt, uint8_t field)
 	{
 		if (evt->id == BTN_UP_ID)
 		{
-			incremnent(tm, field);
+			increment(tm, field);
 		}
 		else if (evt->id == BTN_DN_ID)
 		{
@@ -124,7 +132,7 @@ void SetEvtTimeScreen::updateTime(time_evt_t *tm, evt_t *evt, uint8_t field)
 	}
 }
 
-void SetEvtTimeScreen::incremnent(time_evt_t *tm, uint8_t field)
+void SetEvtTimeScreen::increment(time_evt_t *tm, uint8_t field)
 {
 	if (field == 1)
 	{

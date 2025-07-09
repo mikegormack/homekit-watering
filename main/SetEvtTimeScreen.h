@@ -1,13 +1,12 @@
 #pragma once
 
-#include <MenuScreen.h>
+#include <Screen.h>
+#include <OutputChannel.h>
 
-#include <TimeTypes.h>
-
-class SetEvtTimeScreen : public MenuScreen
+class SetEvtTimeScreen : public Screen
 {
 public:
-	SetEvtTimeScreen(SSD1306I2C &display, ch_time_t &val);
+	SetEvtTimeScreen(SSD1306I2C &display, OutputChannel& ch);
 	~SetEvtTimeScreen();
 
 	void update() override;
@@ -15,10 +14,10 @@ public:
 
 private:
 	bool m_blank;
-	ch_time_t &m_val;
+	OutputChannel& m_val;
 	uint8_t m_sel_field;
 	void displaySetTime(uint8_t id, uint8_t height, time_evt_t *tm, uint8_t blank);
 	void updateTime(time_evt_t *tm, evt_t *evt, uint8_t field);
-	void incremnent(time_evt_t *tm, uint8_t field);
+	void increment(time_evt_t *tm, uint8_t field);
 	void decrement(time_evt_t *tm, uint8_t field);
 };

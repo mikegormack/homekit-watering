@@ -18,10 +18,11 @@ set(incl
 
 set (srcs
 	app_main.cpp
+	OutputChannels.cpp
 	UI.cpp
 	HomeScreen.cpp
 	SettingsMenu.cpp
-	#SetEvtTimeScreen.cpp
+	SetEvtTimeScreen.cpp
 )
 
 idf_component_register(
