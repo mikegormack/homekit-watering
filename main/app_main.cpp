@@ -32,6 +32,8 @@
 #include <freertos/task.h>
 #include <esp_event.h>
 #include <esp_log.h>
+#include <nvs_flash.h>
+#include <nvs.h>
 
 #include <driver/i2c.h>
 
@@ -374,6 +376,18 @@ static bool ioexp_init(i2c_master_bus_handle_t i2c_port)
 static void sprinkler_thread_entry(void *p)
 {
 	esp_err_t ret = ESP_OK;
+
+	ret = nvs_flash_init();
+	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+	{
+	    ESP_ERROR_CHECK(nvs_flash_erase());
+	    ret = nvs_flash_init();
+	}
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE(TAG, "nvm init fail %d", ret);
+		return;
+	}
 
 	i2c_master_bus_config_t i2c_bus_config =
 		{

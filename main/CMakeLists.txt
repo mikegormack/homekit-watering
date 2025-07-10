@@ -18,6 +18,7 @@ set(incl
 
 set (srcs
 	app_main.cpp
+	OutputChannel.cpp
 	OutputChannels.cpp
 	UI.cpp
 	HomeScreen.cpp

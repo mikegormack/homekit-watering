@@ -15,6 +15,7 @@ static const char *TAG = "SetEvtTimeScreen";
 
 SetEvtTimeScreen::SetEvtTimeScreen(SSD1306I2C &display, OutputChannel& ch) :
 	Screen(display),
+	m_val_orig(ch),
 	m_val(ch),
 	m_sel_field(0)
 {
@@ -44,9 +45,9 @@ void SetEvtTimeScreen::update()
 
 		m_display.drawString(0, 0, "Set Time:");
 		m_display.drawString(64, 0, m_val.m_name);
-		displaySetTime(1, 30, &m_val.evt[0], ((m_sel_field <= 3) && m_blank) ? m_sel_field : 0);
+		displaySetTime(1, 30, &m_val.m_evt[0], ((m_sel_field <= 3) && m_blank) ? m_sel_field : 0);
 
-		displaySetTime(2, 48, &m_val.evt[1], ((m_sel_field > 3) && m_blank) ? (m_sel_field - 3) : 0);
+		displaySetTime(2, 48, &m_val.m_evt[1], ((m_sel_field > 3) && m_blank) ? (m_sel_field - 3) : 0);
 
 		m_display.display();
 	}
@@ -68,7 +69,8 @@ void SetEvtTimeScreen::receiveEvent(evt_t *evt)
 		}
 		else if (evt->type == EVT_BTN_HOLD)
 		{
-			m_val.save();
+			m_val_orig = m_val;
+			m_val_orig.save();
 			m_closed = true;
 		}
 	}
@@ -78,7 +80,7 @@ void SetEvtTimeScreen::receiveEvent(evt_t *evt)
 	}
 	else
 	{
-		updateTime(m_sel_field <= 3 ? &m_val.evt[0] : &m_val.evt[1], evt, m_sel_field <= 3 ? m_sel_field : m_sel_field - 3);
+		updateTime(m_sel_field <= 3 ? &m_val.m_evt[0] : &m_val.m_evt[1], evt, m_sel_field <= 3 ? m_sel_field : m_sel_field - 3);
 	}
 }
 

@@ -14,6 +14,7 @@ public:
 
 private:
 	bool m_blank;
+	OutputChannel& m_val_orig;
 	OutputChannel& m_val;
 	uint8_t m_sel_field;
 	void displaySetTime(uint8_t id, uint8_t height, time_evt_t *tm, uint8_t blank);
