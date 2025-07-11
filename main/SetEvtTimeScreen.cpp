@@ -44,7 +44,7 @@ void SetEvtTimeScreen::update()
 		m_display.setFont(ArialMT_Plain_16);
 
 		m_display.drawString(0, 0, "Set Time:");
-		m_display.drawString(64, 0, m_val.m_name);
+		m_display.drawString(70, 0, m_val.m_name);
 		displaySetTime(1, 30, &m_val.m_evt[0], ((m_sel_field <= 3) && m_blank) ? m_sel_field : 0);
 
 		displaySetTime(2, 48, &m_val.m_evt[1], ((m_sel_field > 3) && m_blank) ? (m_sel_field - 3) : 0);
@@ -71,11 +71,13 @@ void SetEvtTimeScreen::receiveEvent(evt_t *evt)
 		{
 			m_val_orig = m_val;
 			m_val_orig.save();
+			m_sel_field = 0;
 			m_closed = true;
 		}
 	}
 	else if (evt->id == BTN_BACK_ID && evt->type == EVT_BTN_PRESS)
 	{
+		m_sel_field = 0;
 		m_closed = true;
 	}
 	else

@@ -16,6 +16,8 @@ public:
 	OutputChannels();
 	~OutputChannels();
 
+	void load();
+
 	OutputChannel* getChannel(ch_id id);
 private:
 	OutputChannel m_channels[NUM_CH];

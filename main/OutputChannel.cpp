@@ -26,13 +26,16 @@ void OutputChannel::save()
 	esp_err_t err = nvs_open("storage", NVS_READWRITE, &handle);
 	if (err == ESP_OK)
 	{
-		err = nvs_set_blob(handle, "op_evts", m_evt, sizeof(m_evt));
+		err = nvs_set_blob(handle, m_name, m_evt, sizeof(m_evt));
 		nvs_close(handle);
-		ESP_LOGE(TAG, "Save ok");
 	}
-	if (err != ESP_OK)
+	if (err == ESP_OK)
 	{
-		ESP_LOGE(TAG, "Save err %d", err);
+		ESP_LOGI(TAG, "Save %s ok", m_name);
+	}
+	else
+	{
+		ESP_LOGE(TAG, "Save %s err %d", m_name, err);
 	}
 }
 
@@ -42,14 +45,17 @@ void OutputChannel::load()
 	esp_err_t err = nvs_open("storage", NVS_READONLY, &handle);
 	if (err == ESP_OK)
 	{
-		size_t len = 0;
-		nvs_get_blob(handle, "op_evts", m_evt, &len);
+		size_t len = sizeof(m_evt);
+		err = nvs_get_blob(handle, m_name, m_evt, &len);
 		nvs_close(handle);
-		ESP_LOGE(TAG, "Load ok");
 	}
-	if (err != ESP_OK)
+	if (err == ESP_OK)
 	{
-		ESP_LOGE(TAG, "Load err %d", err);
+		ESP_LOGI(TAG, "Load %s ok sz %d", m_name, sizeof(m_evt));
+	}
+	else
+	{
+		ESP_LOGE(TAG, "Load %s err %d", m_name, err);
 	}
 }
 

@@ -389,6 +389,8 @@ static void sprinkler_thread_entry(void *p)
 		return;
 	}
 
+	out_ch.load();
+
 	i2c_master_bus_config_t i2c_bus_config =
 		{
 			.i2c_port = -1,

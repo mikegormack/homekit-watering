@@ -12,6 +12,15 @@ OutputChannels::~OutputChannels()
 {
 }
 
+void OutputChannels::load()
+{
+	for (uint8_t i = 0; i < NUM_CH; i++)
+	{
+		m_channels[i].load();
+	}
+}
+
+
 OutputChannel* OutputChannels::getChannel(ch_id id)
 {
 	if (id < NUM_CH)
