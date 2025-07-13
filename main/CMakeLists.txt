@@ -1,7 +1,7 @@
 
 set (req
 	ioexp
-	oled
+	iocfg
 	esp_event
 	esp_hap_core
 	esp_hap_apple_profiles
@@ -9,21 +9,18 @@ set (req
 	app_wifi
 	app_hap_setup_payload
 	button
+	ui
+	output
 )
 
 set(incl
 	"."
 	${CMAKE_CURRENT_SOURCE_DIR}
+	${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 
 set (srcs
 	app_main.cpp
-	OutputChannel.cpp
-	OutputChannels.cpp
-	UI.cpp
-	HomeScreen.cpp
-	SettingsMenu.cpp
-	SetEvtTimeScreen.cpp
 )
 
 idf_component_register(

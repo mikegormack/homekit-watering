@@ -3,7 +3,7 @@
 #include <sstream>
 #include <iomanip>
 
-#include <esp_wifi.h>
+//#include <esp_wifi.h>
 
 #include <HomeScreen.h>
 
@@ -87,15 +87,15 @@ void HomeScreen::update_clock()
 
 void HomeScreen::show_wifi()
 {
-	wifi_ap_record_t ap_info;
+	/*wifi_ap_record_t ap_info;
 	esp_err_t ret = esp_wifi_sta_get_ap_info(&ap_info);
 	m_display.drawBitmap(0, -1, wifi1_icon16x16, 16, 16);
-
+*/
 	int8_t rssi = 0;
-	if (ret == ESP_OK)
+	/*if (ret == ESP_OK)
 	{
 		rssi = ap_info.rssi;
-	}
+	}*/
 
 	if (rssi >= 0)
 	{
