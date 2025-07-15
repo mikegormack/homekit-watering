@@ -5,7 +5,7 @@
 class HomeScreen : public Screen
 {
 public:
-	HomeScreen(SSD1306I2C &display);
+	HomeScreen(SSD1306I2C &display, uint32_t timeout_tick);
 	~HomeScreen();
 
 	void update() override;

@@ -38,29 +38,17 @@ const uint8_t water_tap_icon16x16[32] = WATER_TAP_ICON16X16;
 class Screen
 {
 public:
-	Screen(SSD1306I2C &display) :
-		m_display(display),
-		m_update_count(0),
-		m_refresh(true),
-		m_closed(false)
-	{
-		m_display.clear();
-	}
+	Screen(SSD1306I2C &display, uint32_t timeout_tick);
 
-	~Screen()
-	{
-	}
+	~Screen();
 
-	virtual void update() = 0;
+	virtual void update();
+
+	virtual void refreshTimeout();
 
 	virtual void receiveEvent(evt_t *evt) = 0;
 
-	virtual bool isClosed()
-	{
-		bool is_closed = m_closed;
-		m_closed = false;
-		return is_closed;
-	}
+	virtual bool isClosed();
 
 protected:
 	SSD1306I2C &m_display;
@@ -68,4 +56,6 @@ protected:
 	int m_update_count;
 	bool m_refresh;
 	bool m_closed;
+	uint32_t m_timeout;
+	uint32_t m_timeout_cur;
 };

@@ -13,8 +13,8 @@
 
 static const char *TAG = "SettingsMenu";
 
-SettingsMenu::SettingsMenu(SSD1306I2C &display, MenuCtx& menu_ctx) :
-	Screen(display),
+SettingsMenu::SettingsMenu(SSD1306I2C &display, uint32_t timeout_tick, MenuCtx& menu_ctx) :
+	Screen(display, timeout_tick),
 	m_menu_ctx(menu_ctx),
 	m_sel_item(0),
 	m_cur_menu(&m_menu_base),
@@ -35,12 +35,12 @@ void SettingsMenu::createMenu()
 	auto ch = m_menu_ctx.m_out_ch.getChannel(CH_ID_WATER_1);
 	if (ch != nullptr)
 	{
-		m_menu_base.emplace_back(clock_icon16x16, "CH1 Time", nullptr, std::make_unique<SetEvtTimeScreen>(m_display, *ch));
+		m_menu_base.emplace_back(clock_icon16x16, "CH1 Time", nullptr, std::make_unique<SetEvtTimeScreen>(m_display, m_timeout, *ch));
 	}
 	ch = m_menu_ctx.m_out_ch.getChannel(CH_ID_WATER_2);
 	if (ch != nullptr)
 	{
-		m_menu_base.emplace_back(clock_icon16x16, "CH2 Time", nullptr, std::make_unique<SetEvtTimeScreen>(m_display, *ch));
+		m_menu_base.emplace_back(clock_icon16x16, "CH2 Time", nullptr, std::make_unique<SetEvtTimeScreen>(m_display, m_timeout, *ch));
 	}
 	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Thr", nullptr, nullptr);
 	m_menu_base.emplace_back(clock_icon16x16, "WIFI", &m_menu_wifi, nullptr);
@@ -49,9 +49,20 @@ void SettingsMenu::createMenu()
 
 void SettingsMenu::update()
 {
+	Screen::update();
 	if (m_scr != nullptr)
 	{
 		m_scr->update();
+		if (m_scr->isClosed())
+		{
+			ESP_LOGI(TAG, "Close menu scr");
+			m_scr = nullptr;
+			m_refresh = true;
+		}
+		else
+		{
+			refreshTimeout();
+		}
 	}
 	else if (m_refresh)
 	{
@@ -96,12 +107,6 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 	if (m_scr != nullptr)
 	{
 		m_scr->receiveEvent(evt);
-		if (m_scr->isClosed())
-		{
-			ESP_LOGI(TAG, "Close menu scr");
-			m_scr = nullptr;
-			m_refresh = true;
-		}
 	}
 	else if (evt->type == EVT_BTN_PRESS)
 	{
@@ -120,8 +125,10 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 				if (m_cur_menu->at(m_sel_item).screen != nullptr)
 				{
 					m_scr = m_cur_menu->at(m_sel_item).screen.get();
+					m_scr->refreshTimeout();
 				}
 			}
+			refreshTimeout();
 			m_refresh = true;
 		}
 		else if (evt->id == BTN_UP_ID)
@@ -130,6 +137,7 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 				m_sel_item++;
 			else
 				m_sel_item = 0;
+			refreshTimeout();
 			m_refresh = true;
 		}
 		else if (evt->id == BTN_DN_ID)
@@ -138,6 +146,7 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 				m_sel_item--;
 			else
 				m_sel_item = (m_cur_menu->size() - 1);
+			refreshTimeout();
 			m_refresh = true;
 		}
 		else if (evt->id == BTN_BACK_ID)
@@ -148,6 +157,7 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 				m_sel_item = m_ind_stack.back();
 				m_menu_stack.pop_back();
 				m_ind_stack.pop_back();
+				refreshTimeout();
 				m_refresh = true;
 			}
 			else

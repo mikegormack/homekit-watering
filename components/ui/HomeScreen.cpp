@@ -10,7 +10,7 @@
 #include <SSD1306I2C.h>
 #include <icons.h>
 
-HomeScreen::HomeScreen(SSD1306I2C &display) : Screen(display)
+HomeScreen::HomeScreen(SSD1306I2C &display, uint32_t timeout_tick) : Screen(display, timeout_tick)
 {
 }
 
@@ -20,6 +20,7 @@ HomeScreen::~HomeScreen()
 
 void HomeScreen::update()
 {
+	Screen::update();
 	if (m_update_count == 0)
 	{
 		m_update_count = 50;

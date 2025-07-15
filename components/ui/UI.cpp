@@ -39,6 +39,8 @@ static const char *TAG = "UI";
 
 #define UI_TASK_PERIOD_MS (10)
 
+#define MENU_TIMEOUT_MS (10000)
+
 typedef enum
 {
 	BTN_STATE_UP,
@@ -73,7 +75,7 @@ UI::UI(SSD1306I2C &display, std::shared_ptr<MCP23017> io_exp, MenuCtx& menu_ctx)
 	m_menu_ctx(menu_ctx)
 {
 	m_io_exp->setEventCallback(io_int_callback, this);
-	m_current_scr = std::make_unique<HomeScreen>(display);
+	m_current_scr = std::make_unique<HomeScreen>(display, 0);
 
 	const esp_timer_create_args_t timer_args = {
 		.callback = &button_tmr_handler,
@@ -116,36 +118,29 @@ void UI::ui_thread_entry(void *p)
 	{
 		vTaskDelay(pdMS_TO_TICKS(UI_TASK_PERIOD_MS));
 		if (ctx->m_current_scr != nullptr)
+		{
 			ctx->m_current_scr->update();
-
+			if (ctx->m_current_scr->isClosed())
+			{
+				ctx->m_current_scr = std::make_unique<HomeScreen>(ctx->m_display, 0);
+				ctx->m_menu_active = false;
+			}
+		}
 		while (xQueueReceive(ctx->m_evt_queue, &evt, pdMS_TO_TICKS(5)))
 		{
 			ESP_LOGI(TAG, "evt %d %d", evt.id, evt.type);
 			if (ctx->m_menu_active)
 			{
 				ctx->m_current_scr->receiveEvent(&evt);
-				if (ctx->m_current_scr->isClosed())
-				{
-					ctx->m_current_scr = std::make_unique<HomeScreen>(ctx->m_display);
-					ctx->m_menu_active = false;
-				}
 			}
 			else
 			{
 				if (evt.id == BTN_SEL_ID && evt.type == EVT_BTN_HOLD)
 				{
-					ctx->m_current_scr = std::make_unique<SettingsMenu>(ctx->m_display, ctx->m_menu_ctx);
+					ctx->m_current_scr = std::make_unique<SettingsMenu>(ctx->m_display, (MENU_TIMEOUT_MS / UI_TASK_PERIOD_MS), ctx->m_menu_ctx);
 					ctx->m_menu_active = true;
 				}
 			}
-			/*else if (evt.id == BTN_BACK_ID && evt.type == EVT_BTN_PRESS)
-			{
-				ctx->m_current_scr = std::make_unique<HomeScreen>(ctx->m_display);
-			}
-			else
-			{
-				ctx->m_current_scr->receiveEvent(&evt);
-			}*/
 		}
 	}
 }

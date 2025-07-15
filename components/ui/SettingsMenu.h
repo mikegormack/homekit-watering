@@ -27,7 +27,7 @@ struct menu_item
 class SettingsMenu : public Screen
 {
 public:
-	SettingsMenu(SSD1306I2C &display, MenuCtx& menu_ctx);
+	SettingsMenu(SSD1306I2C &display, uint32_t timeout_tick, MenuCtx& menu_ctx);
 	~SettingsMenu();
 
 	void update() override;

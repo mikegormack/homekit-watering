@@ -13,8 +13,8 @@
 
 static const char *TAG = "SetEvtTimeScreen";
 
-SetEvtTimeScreen::SetEvtTimeScreen(SSD1306I2C &display, OutputChannel& ch) :
-	Screen(display),
+SetEvtTimeScreen::SetEvtTimeScreen(SSD1306I2C &display, uint32_t timeout_tick, OutputChannel& ch) :
+	Screen(display, timeout_tick),
 	m_val_orig(ch),
 	m_val(ch),
 	m_sel_field(0)
@@ -27,6 +27,7 @@ SetEvtTimeScreen::~SetEvtTimeScreen()
 
 void SetEvtTimeScreen::update()
 {
+	Screen::update();
 	if (m_update_count == 0)
 	{
 		m_display.clear();
@@ -66,6 +67,7 @@ void SetEvtTimeScreen::receiveEvent(evt_t *evt)
 			m_sel_field++;
 			if (m_sel_field == 7)
 				m_sel_field = 1;
+			refreshTimeout();
 		}
 		else if (evt->type == EVT_BTN_HOLD)
 		{
@@ -74,6 +76,7 @@ void SetEvtTimeScreen::receiveEvent(evt_t *evt)
 			m_sel_field = 0;
 			m_closed = true;
 		}
+
 	}
 	else if (evt->id == BTN_BACK_ID && evt->type == EVT_BTN_PRESS)
 	{
@@ -83,6 +86,7 @@ void SetEvtTimeScreen::receiveEvent(evt_t *evt)
 	else
 	{
 		updateTime(m_sel_field <= 3 ? &m_val.m_evt[0] : &m_val.m_evt[1], evt, m_sel_field <= 3 ? m_sel_field : m_sel_field - 3);
+		refreshTimeout();
 	}
 }
 

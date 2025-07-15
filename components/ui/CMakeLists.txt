@@ -16,6 +16,7 @@ set(INCL
 
 set(SOURCES
 	UI.cpp
+	Screen.cpp
 	HomeScreen.cpp
 	SettingsMenu.cpp
 	SetEvtTimeScreen.cpp

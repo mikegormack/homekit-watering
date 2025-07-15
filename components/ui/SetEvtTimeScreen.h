@@ -6,7 +6,7 @@
 class SetEvtTimeScreen : public Screen
 {
 public:
-	SetEvtTimeScreen(SSD1306I2C &display, OutputChannel& ch);
+	SetEvtTimeScreen(SSD1306I2C &display, uint32_t timeout_tick, OutputChannel& ch);
 	~SetEvtTimeScreen();
 
 	void update() override;
