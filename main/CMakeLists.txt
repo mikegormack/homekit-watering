@@ -11,6 +11,7 @@ set (req
 	button
 	ui
 	output
+	input
 )
 
 set(incl

@@ -3,11 +3,11 @@
 #include <Screen.h>
 #include <OutputChannel.h>
 
-class SetEvtTimeScreen : public Screen
+class EvtTimeScreen : public Screen
 {
 public:
-	SetEvtTimeScreen(SSD1306I2C &display, uint32_t timeout_tick, OutputChannel& ch);
-	~SetEvtTimeScreen();
+	EvtTimeScreen(SSD1306I2C &display, uint32_t timeout_tick, OutputChannel &ch);
+	~EvtTimeScreen();
 
 	void update() override;
 	void receiveEvent(evt_t *evt) override;

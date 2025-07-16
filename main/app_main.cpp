@@ -48,6 +48,7 @@
 #include <app_hap_setup_payload.h>
 
 #include <OutputChannels.h>
+#include <MoistInput.h>
 #include <UI.h>
 
 #include <SSD1306I2C.h>
@@ -62,6 +63,7 @@ static hap_serv_t *service;
 
 static std::unique_ptr<SSD1306I2C> disp_p;
 static std::unique_ptr<UI> ui_p;
+static std::unique_ptr<MoistInput> moisture_p;
 static std::shared_ptr<MCP23017> ioexp_p;
 static OutputChannels out_ch;
 
@@ -426,6 +428,7 @@ static void sprinkler_thread_entry(void *p)
 		disp_p->flipScreenVertically();
 		disp_p->setLogBuffer(5, 30);
 		ui_p = std::make_unique<UI>(*disp_p, ioexp_p, menu_ctx);
+		moisture_p = std::make_unique<MoistInput>();
 		// ui_p->HomeScreen();
 		// display.resetDisplay();
 		// display.setColor(BLACK);

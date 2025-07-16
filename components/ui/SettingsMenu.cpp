@@ -3,7 +3,8 @@
 #include <iomanip>
 
 #include <SettingsMenu.h>
-#include <SetEvtTimeScreen.h>
+#include <EvtTimeScreen.h>
+#include <MoistThrScreen.h>
 
 #include <SSD1306I2C.h>
 #include <icons.h>
@@ -13,12 +14,11 @@
 
 static const char *TAG = "SettingsMenu";
 
-SettingsMenu::SettingsMenu(SSD1306I2C &display, uint32_t timeout_tick, MenuCtx& menu_ctx) :
-	Screen(display, timeout_tick),
-	m_menu_ctx(menu_ctx),
-	m_sel_item(0),
-	m_cur_menu(&m_menu_base),
-	m_scr(nullptr)
+SettingsMenu::SettingsMenu(SSD1306I2C &display, uint32_t timeout_tick, MenuCtx &menu_ctx) : Screen(display, timeout_tick),
+																							m_menu_ctx(menu_ctx),
+																							m_sel_item(0),
+																							m_cur_menu(&m_menu_base),
+																							m_scr(nullptr)
 {
 	createMenu();
 }
@@ -35,14 +35,14 @@ void SettingsMenu::createMenu()
 	auto ch = m_menu_ctx.m_out_ch.getChannel(CH_ID_WATER_1);
 	if (ch != nullptr)
 	{
-		m_menu_base.emplace_back(clock_icon16x16, "CH1 Time", nullptr, std::make_unique<SetEvtTimeScreen>(m_display, m_timeout, *ch));
+		m_menu_base.emplace_back(clock_icon16x16, "CH1 Time", nullptr, std::make_unique<EvtTimeScreen>(m_display, m_timeout, *ch));
 	}
 	ch = m_menu_ctx.m_out_ch.getChannel(CH_ID_WATER_2);
 	if (ch != nullptr)
 	{
-		m_menu_base.emplace_back(clock_icon16x16, "CH2 Time", nullptr, std::make_unique<SetEvtTimeScreen>(m_display, m_timeout, *ch));
+		m_menu_base.emplace_back(clock_icon16x16, "CH2 Time", nullptr, std::make_unique<EvtTimeScreen>(m_display, m_timeout, *ch));
 	}
-	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Thr", nullptr, nullptr);
+	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Thr", nullptr, std::make_unique<MoistThrScreen>(m_display, m_timeout, m_moist_val));
 	m_menu_base.emplace_back(clock_icon16x16, "WIFI", &m_menu_wifi, nullptr);
 	m_menu_base.emplace_back(clock_icon16x16, "Info", nullptr, nullptr);
 }

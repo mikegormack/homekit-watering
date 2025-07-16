@@ -1,7 +1,6 @@
 #pragma once
 #include <stdint.h>
-#include <nvs_flash.h>
-#include <nvs.h>
+
 
 #define EVT_PER_CH  2
 

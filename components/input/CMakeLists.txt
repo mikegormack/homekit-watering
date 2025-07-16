@@ -1,26 +1,16 @@
 
 set (REQ
-	esp_timer
-	iocfg
-	ioexp
-	oled
-	esp_event
-	button
-	output
+	nvs_flash
+	esp_adc
 )
 
-set(INCL
+set(incl
 	"."
 	${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 set(SOURCES
-	UI.cpp
-	Screen.cpp
-	HomeScreen.cpp
-	SettingsMenu.cpp
-	EvtTimeScreen.cpp
-	MoistThrScreen.cpp
+	MoistInput.cpp
 )
 
 idf_component_register(

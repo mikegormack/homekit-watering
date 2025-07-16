@@ -1,8 +1,6 @@
 
 #include <OutputChannels.h>
 
-
-
 OutputChannels::OutputChannels() :
 	m_channels { OutputChannel("CH1"), OutputChannel("CH2") }
 {

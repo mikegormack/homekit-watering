@@ -71,6 +71,7 @@
 		"cinttypes": "cpp",
 		"typeinfo": "cpp",
 		"iomanip": "cpp",
-		"cerrno": "cpp"
+		"cerrno": "cpp",
+		"*.inc": "c"
 	}
 }

@@ -3,7 +3,7 @@
 #include <sstream>
 #include <iomanip>
 
-#include <SetEvtTimeScreen.h>
+#include <EvtTimeScreen.h>
 
 #include <SSD1306I2C.h>
 #include <icons.h>
@@ -11,21 +11,20 @@
 
 #include <esp_log.h>
 
-static const char *TAG = "SetEvtTimeScreen";
+static const char *TAG = "EvtTimeScreen";
 
-SetEvtTimeScreen::SetEvtTimeScreen(SSD1306I2C &display, uint32_t timeout_tick, OutputChannel& ch) :
-	Screen(display, timeout_tick),
-	m_val_orig(ch),
-	m_val(ch),
-	m_sel_field(0)
+EvtTimeScreen::EvtTimeScreen(SSD1306I2C &display, uint32_t timeout_tick, OutputChannel &ch) : Screen(display, timeout_tick),
+																							  m_val_orig(ch),
+																							  m_val(ch),
+																							  m_sel_field(0)
 {
 }
 
-SetEvtTimeScreen::~SetEvtTimeScreen()
+EvtTimeScreen::~EvtTimeScreen()
 {
 }
 
-void SetEvtTimeScreen::update()
+void EvtTimeScreen::update()
 {
 	Screen::update();
 	if (m_update_count == 0)
@@ -58,7 +57,7 @@ void SetEvtTimeScreen::update()
 	}
 }
 
-void SetEvtTimeScreen::receiveEvent(evt_t *evt)
+void EvtTimeScreen::receiveEvent(evt_t *evt)
 {
 	if (evt->id == BTN_SEL_ID)
 	{
@@ -76,7 +75,6 @@ void SetEvtTimeScreen::receiveEvent(evt_t *evt)
 			m_sel_field = 0;
 			m_closed = true;
 		}
-
 	}
 	else if (evt->id == BTN_BACK_ID && evt->type == EVT_BTN_PRESS)
 	{
@@ -90,7 +88,7 @@ void SetEvtTimeScreen::receiveEvent(evt_t *evt)
 	}
 }
 
-void SetEvtTimeScreen::displaySetTime(uint8_t id, uint8_t height, time_evt_t *tm, uint8_t blank)
+void EvtTimeScreen::displaySetTime(uint8_t id, uint8_t height, time_evt_t *tm, uint8_t blank)
 {
 	std::stringstream ss;
 	ss << +id << '.';
@@ -121,7 +119,7 @@ void SetEvtTimeScreen::displaySetTime(uint8_t id, uint8_t height, time_evt_t *tm
 	}
 }
 
-void SetEvtTimeScreen::updateTime(time_evt_t *tm, evt_t *evt, uint8_t field)
+void EvtTimeScreen::updateTime(time_evt_t *tm, evt_t *evt, uint8_t field)
 {
 	if (tm == NULL || evt == NULL)
 		return;
@@ -140,7 +138,7 @@ void SetEvtTimeScreen::updateTime(time_evt_t *tm, evt_t *evt, uint8_t field)
 	}
 }
 
-void SetEvtTimeScreen::increment(time_evt_t *tm, uint8_t field)
+void EvtTimeScreen::increment(time_evt_t *tm, uint8_t field)
 {
 	if (field == 1)
 	{
@@ -162,7 +160,7 @@ void SetEvtTimeScreen::increment(time_evt_t *tm, uint8_t field)
 	}
 }
 
-void SetEvtTimeScreen::decrement(time_evt_t *tm, uint8_t field)
+void EvtTimeScreen::decrement(time_evt_t *tm, uint8_t field)
 {
 	if (field == 1)
 	{

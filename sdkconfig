@@ -2170,6 +2170,14 @@ CONFIG_HAP_PLATFORM_DEF_NVS_FACTORY_PARTITION="factory_nvs"
 # end of HAP Platform Keystore
 
 #
+# jsmn
+#
+# CONFIG_JSMN_PARENT_LINKS is not set
+# CONFIG_JSMN_STRICT is not set
+# CONFIG_JSMN_STATIC is not set
+# end of jsmn
+
+#
 # libsodium
 #
 CONFIG_LIBSODIUM_USE_MBEDTLS_SHA=y

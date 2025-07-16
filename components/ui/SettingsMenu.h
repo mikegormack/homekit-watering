@@ -45,5 +45,7 @@ private:
 	std::vector<uint8_t> m_ind_stack;
 	Screen* m_scr;
 
+	uint8_t m_moist_val = 50;
+
 	void createMenu(void);
 };
