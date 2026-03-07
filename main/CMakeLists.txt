@@ -6,7 +6,7 @@ set (req
 	esp_hap_core
 	esp_hap_apple_profiles
 	esp_hap_extras
-	app_wifi
+	#app_wifi
 	app_hap_setup_payload
 	button
 	ui
@@ -22,6 +22,7 @@ set(incl
 
 set (srcs
 	app_main.cpp
+	app_wifi_handler.cpp
 )
 
 idf_component_register(

@@ -198,6 +198,8 @@ public:
 	// Draw a bitmap in the internal image format
 	void drawFastImage(int16_t x, int16_t y, int16_t width, int16_t height, const uint8_t *image);
 
+	void drawQRCode(int16_t x, int16_t y, uint8_t qrcode[]);
+
 	// Draw a XBM
 	void drawXbm(int16_t x, int16_t y, int16_t width, int16_t height, const uint8_t *xbm);
 

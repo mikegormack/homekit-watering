@@ -44,7 +44,7 @@
 #include <hap_fw_upgrade.h>
 #include <iot_button.h>
 
-#include <app_wifi.h>
+#include <app_wifi_handler.h>
 #include <app_hap_setup_payload.h>
 
 #include <OutputChannels.h>
@@ -53,6 +53,8 @@
 
 #include <SSD1306I2C.h>
 #include <MCP23017.h>
+
+#include <app_wifi_handler.h>
 
 #include <iocfg.h>
 
@@ -372,6 +374,8 @@ static bool ioexp_init(i2c_master_bus_handle_t i2c_port)
 	return true;
 }
 
+
+
 /*The main thread for handling the Fan Accessory */
 static void sprinkler_thread_entry(void* p)
 {
@@ -554,7 +558,7 @@ display.fillRect(30,40, 20, 20);
 
 	/* Initialize Wi-Fi */
 	app_wifi_init();
-
+	app_wifi_handler_init();
 	/* Register an event handler for HomeKit specific events.
 	 * All event handlers should be registered only after app_wifi_init()
 	 */
