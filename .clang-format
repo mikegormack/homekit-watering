@@ -1,0 +1,30 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: ForIndentation
+
+ColumnLimit: 120
+
+BreakBeforeBraces: Allman
+AllowShortIfStatementsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+
+PointerAlignment: Left
+DerivePointerAlignment: false
+
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: true
+AlignConsecutiveMacros: true
+IndentCaseLabels: true
+
+SpaceBeforeParens: ControlStatements
+
+BraceWrapping:
+  AfterFunction: true
+  AfterControlStatement: true
+  AfterStruct: true
+  AfterEnum: true
+  AfterUnion: true
+
+SortIncludes: false
+fark: n

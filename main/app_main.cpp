@@ -59,21 +59,21 @@
 /*  Required for server verification during OTA, PEM format as string  */
 char server_cert[] = {};
 
-static hap_serv_t *service;
+static hap_serv_t* service;
 
 static std::unique_ptr<SSD1306I2C> disp_p;
-static std::unique_ptr<UI> ui_p;
+static std::unique_ptr<UI>         ui_p;
 static std::unique_ptr<MoistInput> moisture_p;
-static std::shared_ptr<MCP23017> ioexp_p;
-static OutputChannels out_ch;
+static std::shared_ptr<MCP23017>   ioexp_p;
+static OutputChannels              out_ch;
 
 static MenuCtx menu_ctx(out_ch);
 
-static const char *TAG = "HAP Sprinkler";
+static const char* TAG = "HAP Sprinkler";
 
-#define SPRINKLER_TASK_PRIORITY 1
+#define SPRINKLER_TASK_PRIORITY  1
 #define SPRINKLER_TASK_STACKSIZE 4 * 1024
-#define SPRINKLER_TASK_NAME "hap_sprinkler"
+#define SPRINKLER_TASK_NAME      "hap_sprinkler"
 
 /* Reset network credentials if button is pressed for more than 3 seconds and then released */
 #define RESET_NETWORK_BUTTON_TIMEOUT 3
@@ -91,14 +91,14 @@ static const char *TAG = "HAP Sprinkler";
  * @brief The network reset button callback handler.
  * Useful for testing the Wi-Fi re-configuration feature of WAC2
  */
-static void reset_network_handler(void *arg)
+static void reset_network_handler(void* arg)
 {
 	hap_reset_network();
 }
 /**
  * @brief The factory reset button callback handler.
  */
-static void reset_to_factory_handler(void *arg)
+static void reset_to_factory_handler(void* arg)
 {
 	hap_reset_to_factory();
 }
@@ -119,7 +119,7 @@ static void reset_key_init(uint32_t key_gpio_pin)
  * In a real accessory, something like LED blink should be implemented
  * got visual identification
  */
-static int sprinkler_identify(hap_acc_t *ha)
+static int sprinkler_identify(hap_acc_t* ha)
 {
 	ESP_LOGI(TAG, "Accessory identified");
 	return HAP_SUCCESS;
@@ -129,46 +129,45 @@ static int sprinkler_identify(hap_acc_t *ha)
  * An optional HomeKit Event handler which can be used to track HomeKit
  * specific events.
  */
-static void sprinkler_hap_event_handler(void *arg, esp_event_base_t event_base, int32_t event, void *data)
+static void sprinkler_hap_event_handler(void* arg, esp_event_base_t event_base, int32_t event, void* data)
 {
 	switch (event)
 	{
-	case HAP_EVENT_PAIRING_STARTED:
-		ESP_LOGI(TAG, "Pairing Started");
+		case HAP_EVENT_PAIRING_STARTED:
+			ESP_LOGI(TAG, "Pairing Started");
+			break;
+		case HAP_EVENT_PAIRING_ABORTED:
+			ESP_LOGI(TAG, "Pairing Aborted");
+			break;
+		case HAP_EVENT_CTRL_PAIRED:
+			ESP_LOGI(TAG, "Controller %s Paired. Controller count: %d", (char*)data, hap_get_paired_controller_count());
+			break;
+		case HAP_EVENT_CTRL_UNPAIRED:
+			ESP_LOGI(TAG, "Controller %s Removed. Controller count: %d", (char*)data,
+			         hap_get_paired_controller_count());
+			break;
+		case HAP_EVENT_CTRL_CONNECTED:
+			ESP_LOGI(TAG, "Controller %s Connected", (char*)data);
+			break;
+		case HAP_EVENT_CTRL_DISCONNECTED:
+			ESP_LOGI(TAG, "Controller %s Disconnected", (char*)data);
+			break;
+		case HAP_EVENT_ACC_REBOOTING:
+		{
+			char* reason = (char*)data;
+			ESP_LOGI(TAG, "Accessory Rebooting (Reason: %s)", reason ? reason : "null");
+		}
 		break;
-	case HAP_EVENT_PAIRING_ABORTED:
-		ESP_LOGI(TAG, "Pairing Aborted");
-		break;
-	case HAP_EVENT_CTRL_PAIRED:
-		ESP_LOGI(TAG, "Controller %s Paired. Controller count: %d",
-				 (char *)data, hap_get_paired_controller_count());
-		break;
-	case HAP_EVENT_CTRL_UNPAIRED:
-		ESP_LOGI(TAG, "Controller %s Removed. Controller count: %d",
-				 (char *)data, hap_get_paired_controller_count());
-		break;
-	case HAP_EVENT_CTRL_CONNECTED:
-		ESP_LOGI(TAG, "Controller %s Connected", (char *)data);
-		break;
-	case HAP_EVENT_CTRL_DISCONNECTED:
-		ESP_LOGI(TAG, "Controller %s Disconnected", (char *)data);
-		break;
-	case HAP_EVENT_ACC_REBOOTING:
-	{
-		char *reason = (char *)data;
-		ESP_LOGI(TAG, "Accessory Rebooting (Reason: %s)", reason ? reason : "null");
-	}
-	break;
-	case HAP_EVENT_PAIRING_MODE_TIMED_OUT:
-		ESP_LOGI(TAG, "Pairing Mode timed out. Please reboot the device.");
-		break;
-	default:
-		/* Silently ignore unknown events */
-		break;
+		case HAP_EVENT_PAIRING_MODE_TIMED_OUT:
+			ESP_LOGI(TAG, "Pairing Mode timed out. Please reboot the device.");
+			break;
+		default:
+			/* Silently ignore unknown events */
+			break;
 	}
 }
 
-static int sprinkler_read(hap_char_t *hc, hap_status_t *status_code, void *serv_priv, void *read_priv)
+static int sprinkler_read(hap_char_t* hc, hap_status_t* status_code, void* serv_priv, void* read_priv)
 {
 	if (hap_req_get_ctrl_id(read_priv))
 	{
@@ -178,10 +177,10 @@ static int sprinkler_read(hap_char_t *hc, hap_status_t *status_code, void *serv_
 
 	/*if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ON))
 	{
-		*status_code = HAP_STATUS_SUCCESS;
-		ESP_LOGI(TAG, "On");
+	    *status_code = HAP_STATUS_SUCCESS;
+	    ESP_LOGI(TAG, "On");
 	}*/
-	const hap_val_t *cur_val;
+	const hap_val_t* cur_val;
 	if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ACTIVE))
 	{
 		*status_code = HAP_STATUS_SUCCESS;
@@ -202,8 +201,8 @@ static int sprinkler_read(hap_char_t *hc, hap_status_t *status_code, void *serv_
 	}
 	/*else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_PROGRAM_MODE))
 	{
-		*status_code = HAP_STATUS_SUCCESS;
-		ESP_LOGI(TAG, "Program Mode");
+	    *status_code = HAP_STATUS_SUCCESS;
+	    ESP_LOGI(TAG, "Program Mode");
 	}*/
 	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_SET_DURATION))
 	{
@@ -237,30 +236,29 @@ static int sprinkler_read(hap_char_t *hc, hap_status_t *status_code, void *serv_
 	}
 	/* if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ROTATION_DIRECTION)) {
 
-		 const hap_val_t *cur_val = hap_char_get_val(hc);
+	     const hap_val_t *cur_val = hap_char_get_val(hc);
 
-		 hap_val_t new_val;
-		 if (cur_val->i == 1) {
-			 new_val.i = 0;
-		 } else {
-			 new_val.i = 1;
-		 }
-		 hap_char_update_val(hc, &new_val);
-		 *status_code = HAP_STATUS_SUCCESS;
+	     hap_val_t new_val;
+	     if (cur_val->i == 1) {
+	         new_val.i = 0;
+	     } else {
+	         new_val.i = 1;
+	     }
+	     hap_char_update_val(hc, &new_val);
+	     *status_code = HAP_STATUS_SUCCESS;
 	 }*/
 	return HAP_SUCCESS;
 }
 
-static int sprinkler_write(hap_write_data_t write_data[], int count,
-						   void *serv_priv, void *write_priv)
+static int sprinkler_write(hap_write_data_t write_data[], int count, void* serv_priv, void* write_priv)
 {
 	if (hap_req_get_ctrl_id(write_priv))
 	{
 		ESP_LOGI(TAG, "Received write from %s", hap_req_get_ctrl_id(write_priv));
 	}
 	ESP_LOGI(TAG, "Sprinkler write called with %d chars", count);
-	int i, ret = HAP_SUCCESS;
-	hap_write_data_t *write;
+	int               i, ret = HAP_SUCCESS;
+	hap_write_data_t* write;
 	for (i = 0; i < count; i++)
 	{
 		write = &write_data[i];
@@ -270,7 +268,7 @@ static int sprinkler_write(hap_write_data_t write_data[], int count,
 		{
 			hap_char_update_val(write->hc, &(write->val));
 
-			hap_char_t *in_use = hap_serv_get_char_by_uuid(service, HAP_CHAR_UUID_IN_USE);
+			hap_char_t* in_use = hap_serv_get_char_by_uuid(service, HAP_CHAR_UUID_IN_USE);
 
 			ESP_LOGI(TAG, "Srv Addr %lu", (uint32_t)service);
 			ESP_LOGI(TAG, "Srv Priv Addr %lu", (uint32_t)serv_priv);
@@ -309,8 +307,8 @@ static int sprinkler_write(hap_write_data_t write_data[], int count,
 			hap_char_update_val(write->hc, &(write->val));
 			ESP_LOGI(TAG, "Set Duration %lu", write->val.u);
 
-			hap_char_t *rem_dur = hap_serv_get_char_by_uuid(service, HAP_CHAR_UUID_REMAINING_DURATION);
-			hap_val_t new_val;
+			hap_char_t* rem_dur = hap_serv_get_char_by_uuid(service, HAP_CHAR_UUID_REMAINING_DURATION);
+			hap_val_t   new_val;
 			new_val.u = write->val.u - 100;
 			hap_char_update_val(rem_dur, &new_val);
 
@@ -328,17 +326,17 @@ static int sprinkler_write(hap_write_data_t write_data[], int count,
 		}
 		/*else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ROTATION_DIRECTION))
 		{
-			if (write->val.i > 1)
-			{
-				*(write->status) = HAP_STATUS_VAL_INVALID;
-				ret = HAP_FAIL;
-			}
-			else
-			{
-				ESP_LOGI(TAG, "Received Write. Fan %s", write->val.i ? "AntiClockwise" : "Clockwise");
-				hap_char_update_val(write->hc, &(write->val));
-				*(write->status) = HAP_STATUS_SUCCESS;
-			}
+		    if (write->val.i > 1)
+		    {
+		        *(write->status) = HAP_STATUS_VAL_INVALID;
+		        ret = HAP_FAIL;
+		    }
+		    else
+		    {
+		        ESP_LOGI(TAG, "Received Write. Fan %s", write->val.i ? "AntiClockwise" : "Clockwise");
+		        hap_char_update_val(write->hc, &(write->val));
+		        *(write->status) = HAP_STATUS_SUCCESS;
+		    }
 		} */
 		else
 		{
@@ -375,15 +373,15 @@ static bool ioexp_init(i2c_master_bus_handle_t i2c_port)
 }
 
 /*The main thread for handling the Fan Accessory */
-static void sprinkler_thread_entry(void *p)
+static void sprinkler_thread_entry(void* p)
 {
 	esp_err_t ret = ESP_OK;
 
 	ret = nvs_flash_init();
 	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
 	{
-	    ESP_ERROR_CHECK(nvs_flash_erase());
-	    ret = nvs_flash_init();
+		ESP_ERROR_CHECK(nvs_flash_erase());
+		ret = nvs_flash_init();
 	}
 	if (ret != ESP_OK)
 	{
@@ -393,19 +391,14 @@ static void sprinkler_thread_entry(void *p)
 
 	out_ch.load();
 
-	i2c_master_bus_config_t i2c_bus_config =
-		{
-			.i2c_port = -1,
-			.sda_io_num = I2C_SDA_PIN,
-			.scl_io_num = I2C_SCL_PIN,
-			.clk_source = I2C_CLK_SRC_DEFAULT,
-			.glitch_ignore_cnt = 7,
-			.intr_priority = 0,
-			.trans_queue_depth = 0,
-			.flags =
-				{
-					.enable_internal_pullup = 1,
-					.allow_pd = 0}};
+	i2c_master_bus_config_t i2c_bus_config = {.i2c_port = -1,
+	                                          .sda_io_num = I2C_SDA_PIN,
+	                                          .scl_io_num = I2C_SCL_PIN,
+	                                          .clk_source = I2C_CLK_SRC_DEFAULT,
+	                                          .glitch_ignore_cnt = 7,
+	                                          .intr_priority = 0,
+	                                          .trans_queue_depth = 0,
+	                                          .flags = {.enable_internal_pullup = 1, .allow_pd = 0}};
 	i2c_master_bus_handle_t bus_handle;
 
 	ret = i2c_new_master_bus(&i2c_bus_config, &bus_handle);
@@ -453,7 +446,7 @@ display.fillRect(30,40, 20, 20);
 		display.display();*/
 	}
 
-	hap_acc_t *accessory;
+	hap_acc_t* accessory;
 	// hap_serv_t *service;
 
 	/* Configure HomeKit core to make the Accessory name (and thus the WAC SSID) unique,
@@ -471,15 +464,15 @@ display.fillRect(30,40, 20, 20);
 	 * the mandatory services internally
 	 */
 	hap_acc_cfg_t cfg = {
-		.name = (char *)"Sprinkler",
-		.model = (char *)"S1",
-		.manufacturer = (char *)"Gormack",
-		.serial_num = (char *)"001122334455",
-		.fw_rev = (char *)"1.0.0",
-		.hw_rev = NULL,
-		.pv = (char *)"1.0.0",
-		.cid = HAP_CID_SPRINKLER,
-		.identify_routine = sprinkler_identify,
+	    .name = (char*)"Sprinkler",
+	    .model = (char*)"S1",
+	    .manufacturer = (char*)"Gormack",
+	    .serial_num = (char*)"001122334455",
+	    .fw_rev = (char*)"1.0.0",
+	    .hw_rev = NULL,
+	    .pv = (char*)"1.0.0",
+	    .cid = HAP_CID_SPRINKLER,
+	    .identify_routine = sprinkler_identify,
 	};
 	/* Create accessory object */
 	accessory = hap_acc_create(&cfg);
@@ -498,7 +491,7 @@ display.fillRect(30,40, 20, 20);
 	hap_serv_add_char(service, hap_char_remaining_duration_create(1000));*/
 
 	service = hap_serv_humidity_sensor_create(50.5);
-	hap_serv_add_char(service, hap_char_name_create((char *)"Water Level"));
+	hap_serv_add_char(service, hap_char_name_create((char*)"Water Level"));
 	hap_serv_add_char(service, hap_char_water_level_create(75));
 
 	/* Set the write callback for the service */
@@ -515,9 +508,9 @@ display.fillRect(30,40, 20, 20);
 	 * and the top level README for more information.
 	 */
 	hap_fw_upgrade_config_t ota_config = {
-		.server_cert_pem = server_cert,
+	    .server_cert_pem = server_cert,
 	};
-	hap_serv_t *fwservice = hap_serv_fw_upgrade_create(&ota_config);
+	hap_serv_t* fwservice = hap_serv_fw_upgrade_create(&ota_config);
 	/* Add the service to the Accessory Object */
 	hap_acc_add_serv(accessory, fwservice);
 
@@ -529,8 +522,7 @@ display.fillRect(30,40, 20, 20);
 	reset_key_init(RESET_GPIO);
 
 	/* Query the controller count (just for information) */
-	ESP_LOGI(TAG, "Accessory is paired with %d controllers",
-			 hap_get_paired_controller_count());
+	ESP_LOGI(TAG, "Accessory is paired with %d controllers", hap_get_paired_controller_count());
 
 	/* TODO: Do the actual hardware initialization here */
 
@@ -578,5 +570,6 @@ display.fillRect(30,40, 20, 20);
 
 extern "C" void app_main()
 {
-	xTaskCreate(sprinkler_thread_entry, SPRINKLER_TASK_NAME, SPRINKLER_TASK_STACKSIZE, NULL, SPRINKLER_TASK_PRIORITY, NULL);
+	xTaskCreate(sprinkler_thread_entry, SPRINKLER_TASK_NAME, SPRINKLER_TASK_STACKSIZE, NULL, SPRINKLER_TASK_PRIORITY,
+	            NULL);
 }
