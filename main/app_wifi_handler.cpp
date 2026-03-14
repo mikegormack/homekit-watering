@@ -209,7 +209,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 static esp_err_t prov_mgr_reinit(void)
 {
 	wifi_prov_mgr_config_t config = {.scheme               = wifi_prov_scheme_ble,
-	                                 .scheme_event_handler = WIFI_PROV_SCHEME_BLE_EVENT_HANDLER_FREE_BTDM,
+	                                 .scheme_event_handler = WIFI_PROV_EVENT_HANDLER_NONE,
 	                                 .app_event_handler    = {.event_cb = NULL, .user_data = NULL},
 	                                 .wifi_prov_conn_cfg   = {0}};
 	esp_err_t err = wifi_prov_mgr_init(config);
@@ -346,6 +346,9 @@ std::unique_ptr<uint8_t[]> wifi_handler_start_provisioning(void)
 		if (prov_mgr_reinit() != ESP_OK)
 			return nullptr;
 	}
+
+	// Clear any stale connected state so the screen detects a fresh connection
+	xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_EVENT);
 
 	char                 service_name[12];
 	char                 pop[9];
