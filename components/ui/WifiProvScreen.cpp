@@ -18,7 +18,7 @@ WifiProvScreen::WifiProvScreen(SSD1306I2C& display, MenuCtx& menu_ctx)
     : Screen(display, 0 /* no timeout */),
       m_menu_ctx(menu_ctx),
       m_qr_code(nullptr),
-      m_state(PROV_STATE_STARTING),
+      m_state(PROV_STATE_ERROR),
       m_success_count(0)
 {
 }
@@ -31,17 +31,17 @@ void WifiProvScreen::refreshTimeout()
 {
     Screen::refreshTimeout();
 
-    // Start provisioning the first time this screen becomes active
-    if (m_state == PROV_STATE_STARTING)
-    {
-        ESP_LOGI(TAG, "Starting provisioning");
-        if (m_menu_ctx.start_prov)
-        {
-            m_qr_code = m_menu_ctx.start_prov();
-        }
-        m_state   = m_qr_code ? PROV_STATE_QR : PROV_STATE_ERROR;
-        m_refresh = true;
-    }
+    // (Re)start provisioning every time this screen becomes active
+    ESP_LOGI(TAG, "Starting provisioning");
+    m_qr_code       = nullptr;
+    m_success_count = 0;
+    m_update_count  = 0;
+
+    if (m_menu_ctx.start_prov)
+        m_qr_code = m_menu_ctx.start_prov();
+
+    m_state   = m_qr_code ? PROV_STATE_QR : PROV_STATE_ERROR;
+    m_refresh = true;
 }
 
 void WifiProvScreen::update()
@@ -81,9 +81,6 @@ void WifiProvScreen::update()
         m_refresh = false;
         switch (m_state)
         {
-            case PROV_STATE_STARTING:
-                drawStarting();
-                break;
             case PROV_STATE_QR:
                 drawQR();
                 break;
@@ -177,11 +174,3 @@ void WifiProvScreen::drawError()
     m_display.display();
 }
 
-void WifiProvScreen::drawStarting()
-{
-    m_display.clear();
-    m_display.setColor(WHITE);
-    m_display.setFont(ArialMT_Plain_16);
-    m_display.drawString(4, 20, "Starting...");
-    m_display.display();
-}

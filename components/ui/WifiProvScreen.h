@@ -7,7 +7,6 @@
 
 typedef enum
 {
-    PROV_STATE_STARTING,
     PROV_STATE_QR,
     PROV_STATE_SUCCESS,
     PROV_STATE_ERROR,
@@ -32,6 +31,5 @@ private:
     void drawQR();
     void drawSuccess();
     void drawError();
-    void drawStarting();
     void cancel();
 };
