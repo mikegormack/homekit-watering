@@ -365,8 +365,14 @@ std::unique_ptr<uint8_t[]> wifi_handler_start_provisioning(void)
 	return gen_qr_code(service_name, pop, PROV_TRANSPORT_BLE);
 }
 
-bool wifi_handler_stop_provisioning(void)
+void wifi_handler_stop_provisioning(void)
 {
 	wifi_prov_mgr_stop_provisioning();
-	return true;
+}
+
+bool wifi_handler_is_connected(void)
+{
+	if (wifi_event_group == NULL)
+		return false;
+	return (xEventGroupGetBits(wifi_event_group) & WIFI_CONNECTED_EVENT) != 0;
 }

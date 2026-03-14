@@ -14,11 +14,12 @@ extern "C"
 {
 #endif
 
-	bool app_wifi_handler_init(void);
+	bool      app_wifi_handler_init(void);
 	esp_err_t app_wifi_handler_start(TickType_t ticks_to_wait);
 
 	std::unique_ptr<uint8_t[]> wifi_handler_start_provisioning(void);
-
+	void                       wifi_handler_stop_provisioning(void);
+	bool                       wifi_handler_is_connected(void);
 #ifdef __cplusplus
 }
 #endif

@@ -7,6 +7,7 @@ set (REQ
 	esp_event
 	button
 	output
+	qrcodegen
 )
 
 set(INCL
@@ -21,6 +22,7 @@ set(SOURCES
 	SettingsMenu.cpp
 	EvtTimeScreen.cpp
 	MoistThrScreen.cpp
+	WifiProvScreen.cpp
 )
 
 idf_component_register(

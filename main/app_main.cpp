@@ -45,6 +45,7 @@
 #include <iot_button.h>
 
 #include <app_hap_setup_payload.h>
+#include <app_wifi_handler.h>
 
 #include <OutputChannels.h>
 #include <MoistInput.h>
@@ -557,6 +558,11 @@ display.fillRect(30,40, 20, 20);
 
 	/* Initialize Wi-Fi */
 	app_wifi_handler_init();
+
+	/* Wire wifi callbacks into menu context for WifiProvScreen */
+	menu_ctx.start_prov   = []() { return wifi_handler_start_provisioning(); };
+	menu_ctx.stop_prov    = []() { wifi_handler_stop_provisioning(); };
+	menu_ctx.is_connected = []() { return wifi_handler_is_connected(); };
 	/* Register an event handler for HomeKit specific events.
 	 * All event handlers should be registered only after app_wifi_init()
 	 */
