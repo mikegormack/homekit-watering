@@ -52,6 +52,7 @@
 static const char*        TAG = "app_wifi_handler";
 static const int          WIFI_CONNECTED_EVENT = BIT0;
 static EventGroupHandle_t wifi_event_group;
+static bool               s_prov_mgr_init = false;
 
 #ifdef CONFIG_APP_WIFI_USE_UNIFIED_PROVISIONING
 #define PROV_QR_VERSION "v1"
@@ -195,6 +196,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 				break;
 			case WIFI_PROV_END:
 				// De-initialize manager once provisioning is finished
+				s_prov_mgr_init = false;
 				wifi_prov_mgr_deinit();
 				break;
 			default:
@@ -202,6 +204,22 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 		}
 	}
 #endif /* CONFIG_APP_WIFI_USE_UNIFIED_PROVISIONING */
+}
+
+static esp_err_t prov_mgr_reinit(void)
+{
+	wifi_prov_mgr_config_t config = {.scheme               = wifi_prov_scheme_ble,
+	                                 .scheme_event_handler = WIFI_PROV_SCHEME_BLE_EVENT_HANDLER_FREE_BTDM,
+	                                 .app_event_handler    = {.event_cb = NULL, .user_data = NULL},
+	                                 .wifi_prov_conn_cfg   = {0}};
+	esp_err_t err = wifi_prov_mgr_init(config);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to initialize provisioning manager: %s", esp_err_to_name(err));
+		return err;
+	}
+	s_prov_mgr_init = true;
+	return ESP_OK;
 }
 
 bool app_wifi_handler_init(void)
@@ -256,17 +274,8 @@ bool app_wifi_handler_init(void)
 	ESP_LOGI(TAG, "Wi-Fi initialized successfully");
 
 #ifdef CONFIG_APP_WIFI_USE_UNIFIED_PROVISIONING
-	wifi_prov_mgr_config_t config = {.scheme = wifi_prov_scheme_ble,
-	                                 .scheme_event_handler = WIFI_PROV_SCHEME_BLE_EVENT_HANDLER_FREE_BTDM,
-	                                 .app_event_handler = {.event_cb = NULL, .user_data = NULL},
-	                                 .wifi_prov_conn_cfg = {0}};
-
-	err = wifi_prov_mgr_init(config);
-	if (err != ESP_OK)
-	{
-		ESP_LOGE(TAG, "Failed to initialize provisioning manager: %s", esp_err_to_name(err));
+	if (prov_mgr_reinit() != ESP_OK)
 		return false;
-	}
 
 	err = esp_event_handler_register(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL);
 	if (err != ESP_OK)
@@ -318,6 +327,8 @@ static void wifi_init_sta()
 
 bool wifi_handler_is_prov_active(void)
 {
+	if (!s_prov_mgr_init)
+		return false;
 	return (wifi_prov_mgr_is_sm_idle() == false);
 }
 
@@ -327,6 +338,13 @@ std::unique_ptr<uint8_t[]> wifi_handler_start_provisioning(void)
 	{
 		ESP_LOGW(TAG, "Provisioning is already active");
 		return nullptr;
+	}
+
+	// Re-initialize manager if it was previously deinitialized after a session
+	if (!s_prov_mgr_init)
+	{
+		if (prov_mgr_reinit() != ESP_OK)
+			return nullptr;
 	}
 
 	char                 service_name[12];
