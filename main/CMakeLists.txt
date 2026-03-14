@@ -6,12 +6,15 @@ set (req
 	esp_hap_core
 	esp_hap_apple_profiles
 	esp_hap_extras
+	esp_wifi
+	wifi_provisioning
 	#app_wifi
 	app_hap_setup_payload
 	button
 	ui
 	output
 	input
+	qrcodegen
 )
 
 set(incl

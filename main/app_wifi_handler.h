@@ -7,14 +7,17 @@
 */
 #pragma once
 #include <esp_err.h>
+#include <memory>
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-	void app_wifi_init(void);
-	esp_err_t app_wifi_start(TickType_t ticks_to_wait);
+	bool app_wifi_handler_init(void);
+	esp_err_t app_wifi_handler_start(TickType_t ticks_to_wait);
+
+	std::unique_ptr<uint8_t[]> wifi_handler_start_provisioning(void);
 
 #ifdef __cplusplus
 }

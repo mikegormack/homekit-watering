@@ -44,7 +44,6 @@
 #include <hap_fw_upgrade.h>
 #include <iot_button.h>
 
-#include <app_wifi_handler.h>
 #include <app_hap_setup_payload.h>
 
 #include <OutputChannels.h>
@@ -557,7 +556,6 @@ display.fillRect(30,40, 20, 20);
 	hap_enable_mfi_auth(HAP_MFI_AUTH_HW);
 
 	/* Initialize Wi-Fi */
-	app_wifi_init();
 	app_wifi_handler_init();
 	/* Register an event handler for HomeKit specific events.
 	 * All event handlers should be registered only after app_wifi_init()
