@@ -560,9 +560,13 @@ display.fillRect(30,40, 20, 20);
 	app_wifi_handler_init();
 
 	/* Wire wifi callbacks into menu context for WifiProvScreen */
-	menu_ctx.start_prov   = []() { return wifi_handler_start_provisioning(); };
-	menu_ctx.stop_prov    = []() { wifi_handler_stop_provisioning(); };
-	menu_ctx.is_connected = []() { return wifi_handler_is_connected(); };
+	menu_ctx.start_prov  = []() { return wifi_handler_start_provisioning(); };
+	menu_ctx.stop_prov   = []() { wifi_handler_stop_provisioning(); };
+	menu_ctx.prov_status = []() -> MenuCtx::ProvStatus {
+		if (wifi_handler_prov_failed()) return MenuCtx::ProvStatus::Failed;
+		if (wifi_handler_is_connected()) return MenuCtx::ProvStatus::Connected;
+		return MenuCtx::ProvStatus::InProgress;
+	};
 	/* Register an event handler for HomeKit specific events.
 	 * All event handlers should be registered only after app_wifi_init()
 	 */

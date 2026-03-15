@@ -20,6 +20,7 @@ extern "C"
 	std::unique_ptr<uint8_t[]> wifi_handler_start_provisioning(void);
 	void                       wifi_handler_stop_provisioning(void);
 	bool                       wifi_handler_is_connected(void);
+	bool                       wifi_handler_prov_failed(void);
 #ifdef __cplusplus
 }
 #endif

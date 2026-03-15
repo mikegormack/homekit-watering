@@ -14,8 +14,8 @@ static const char* TAG = "WifiProvScreen";
 // Show "Connected!" for ~3 seconds (300 x 10ms updates) before closing
 static constexpr int SUCCESS_DISPLAY_TICKS = 300;
 
-WifiProvScreen::WifiProvScreen(SSD1306I2C& display, MenuCtx& menu_ctx)
-    : Screen(display, 0 /* no timeout */),
+WifiProvScreen::WifiProvScreen(SSD1306I2C& display, MenuCtx& menu_ctx, uint32_t timeout_tick)
+    : Screen(display, timeout_tick),
       m_menu_ctx(menu_ctx),
       m_qr_code(nullptr),
       m_state(PROV_STATE_ERROR),
@@ -46,7 +46,13 @@ void WifiProvScreen::refreshTimeout()
 
 void WifiProvScreen::update()
 {
-    // No base timeout — manage our own lifecycle
+    Screen::update(); // handles timeout → m_closed
+    if (m_closed)
+    {
+        cancel();
+        return;
+    }
+
     if (m_update_count > 0)
     {
         m_update_count--;
@@ -55,13 +61,22 @@ void WifiProvScreen::update()
 
     if (m_state == PROV_STATE_QR)
     {
-        // Poll for connection
-        if (m_menu_ctx.is_connected && m_menu_ctx.is_connected())
+        if (m_menu_ctx.prov_status)
         {
-            ESP_LOGI(TAG, "WiFi connected — provisioning complete");
-            m_state         = PROV_STATE_SUCCESS;
-            m_success_count = SUCCESS_DISPLAY_TICKS;
-            m_refresh       = true;
+            auto status = m_menu_ctx.prov_status();
+            if (status == MenuCtx::ProvStatus::Connected)
+            {
+                ESP_LOGI(TAG, "WiFi connected — provisioning complete");
+                m_state         = PROV_STATE_SUCCESS;
+                m_success_count = SUCCESS_DISPLAY_TICKS;
+                m_refresh       = true;
+            }
+            else if (status == MenuCtx::ProvStatus::Failed)
+            {
+                ESP_LOGE(TAG, "Provisioning credentials failed");
+                m_state   = PROV_STATE_ERROR;
+                m_refresh = true;
+            }
         }
         m_update_count = 20; // re-poll every 200ms
     }
@@ -96,9 +111,18 @@ void WifiProvScreen::update()
 
 void WifiProvScreen::receiveEvent(evt_t* evt)
 {
-    if (evt->id == BTN_BACK_ID && evt->type == EVT_BTN_PRESS)
+    if (evt->type != EVT_BTN_PRESS)
+        return;
+
+    if (m_state == PROV_STATE_QR)
     {
-        cancel();
+        if (evt->id == BTN_BACK_ID)
+            cancel();
+    }
+    else
+    {
+        // Success or error — any button exits back to menu
+        m_closed = true;
     }
 }
 
@@ -125,19 +149,13 @@ void WifiProvScreen::drawQR()
 
     int size = qrcodegen_getSize(m_qr_code.get());
 
-    // Draw QR code 1px per module, centred vertically on the left 64px
-    int x_off = 2;
-    int y_off = (64 - size) / 2;
-    if (y_off < 0) y_off = 0;
-
-    for (int y = 0; y < size && (y + y_off) < 64; y++)
+    // Scale to fill 64x64 using nearest-neighbor (version 4 = 33 modules → ~1.94px/module)
+    for (int py = 0; py < 64; py++)
     {
-        for (int x = 0; x < size && (x + x_off) < 64; x++)
+        for (int px = 0; px < 64; px++)
         {
-            if (qrcodegen_getModule(m_qr_code.get(), x, y))
-            {
-                m_display.setPixel(x + x_off, y + y_off);
-            }
+            if (qrcodegen_getModule(m_qr_code.get(), (px * size) / 64, (py * size) / 64))
+                m_display.setPixel(px, py);
         }
     }
 

@@ -53,11 +53,12 @@ static const char*        TAG = "app_wifi_handler";
 static const int          WIFI_CONNECTED_EVENT = BIT0;
 static EventGroupHandle_t wifi_event_group;
 static bool               s_prov_mgr_init = false;
+static bool               s_prov_failed = false;
 
 #ifdef CONFIG_APP_WIFI_USE_UNIFIED_PROVISIONING
 #define PROV_QR_VERSION "v1"
 
-#define MAX_QRCODE_VERSION 5
+#define MAX_QRCODE_VERSION 4
 
 #define PROV_TRANSPORT_SOFTAP "softap"
 #define PROV_TRANSPORT_BLE    "ble"
@@ -185,10 +186,10 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			{
 				wifi_prov_sta_fail_reason_t* reason = (wifi_prov_sta_fail_reason_t*)event_data;
 				ESP_LOGE(TAG,
-				         "Provisioning failed!\n\tReason : %s"
-				         "\n\tPlease reset to factory and retry provisioning",
+				         "Provisioning failed!\n\tReason : %s",
 				         (*reason == WIFI_PROV_STA_AUTH_ERROR) ? "Wi-Fi station authentication failed"
 				                                               : "Wi-Fi access-point not found");
+				s_prov_failed = true;
 				break;
 			}
 			case WIFI_PROV_CRED_SUCCESS:
@@ -347,8 +348,9 @@ std::unique_ptr<uint8_t[]> wifi_handler_start_provisioning(void)
 			return nullptr;
 	}
 
-	// Clear any stale connected state so the screen detects a fresh connection
+	// Clear any stale state so the screen detects fresh events only
 	xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_EVENT);
+	s_prov_failed = false;
 
 	char                 service_name[12];
 	char                 pop[9];
@@ -396,4 +398,9 @@ bool wifi_handler_is_connected(void)
 	if (wifi_event_group == NULL)
 		return false;
 	return (xEventGroupGetBits(wifi_event_group) & WIFI_CONNECTED_EVENT) != 0;
+}
+
+bool wifi_handler_prov_failed(void)
+{
+	return s_prov_failed;
 }

@@ -15,7 +15,7 @@ typedef enum
 class WifiProvScreen : public Screen
 {
 public:
-    WifiProvScreen(SSD1306I2C& display, MenuCtx& menu_ctx);
+    WifiProvScreen(SSD1306I2C& display, MenuCtx& menu_ctx, uint32_t timeout_tick);
     ~WifiProvScreen();
 
     void update() override;

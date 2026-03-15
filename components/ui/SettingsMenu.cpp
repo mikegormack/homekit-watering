@@ -31,7 +31,7 @@ SettingsMenu::~SettingsMenu()
 void SettingsMenu::createMenu()
 {
 	m_menu_wifi.emplace_back(wifi1_icon16x16, "Status", nullptr, nullptr);
-	m_menu_wifi.emplace_back(wifi1_icon16x16, "Provision", nullptr, std::make_unique<WifiProvScreen>(m_display, m_menu_ctx));
+	m_menu_wifi.emplace_back(wifi1_icon16x16, "Provision", nullptr, std::make_unique<WifiProvScreen>(m_display, m_menu_ctx, 6000 /* 60s */));
 
 	auto ch = m_menu_ctx.m_out_ch.getChannel(CH_ID_WATER_1);
 	if (ch != nullptr)
