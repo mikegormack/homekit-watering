@@ -21,6 +21,7 @@ extern "C"
 	void                       wifi_handler_stop_provisioning(void);
 	bool                       wifi_handler_is_connected(void);
 	bool                       wifi_handler_prov_failed(void);
+	void                       wifi_handler_get_info(char* ssid, size_t ssid_len, char* ip, size_t ip_len, bool* connected);
 #ifdef __cplusplus
 }
 #endif

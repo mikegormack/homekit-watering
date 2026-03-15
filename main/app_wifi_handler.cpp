@@ -54,6 +54,9 @@ static const int          WIFI_CONNECTED_EVENT = BIT0;
 static EventGroupHandle_t wifi_event_group;
 static bool               s_prov_mgr_init = false;
 static bool               s_prov_failed = false;
+static esp_netif_t*       s_wifi_netif = nullptr;
+static wifi_config_t      s_saved_wifi_cfg = {};
+static bool               s_has_saved_cfg = false;
 
 #ifdef CONFIG_APP_WIFI_USE_UNIFIED_PROVISIONING
 #define PROV_QR_VERSION "v1"
@@ -142,7 +145,8 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 {
 	if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
 	{
-		esp_wifi_connect();
+		esp_err_t err = esp_wifi_connect();
+		ESP_LOGI(TAG, "STA start - esp_wifi_connect: %s", esp_err_to_name(err));
 	}
 	else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED)
 	{
@@ -196,10 +200,24 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 				ESP_LOGI(TAG, "Provisioning successful");
 				break;
 			case WIFI_PROV_END:
-				// De-initialize manager once provisioning is finished
+			{
+				ESP_LOGI(TAG, "Provisioning end");
 				s_prov_mgr_init = false;
 				wifi_prov_mgr_deinit();
+				esp_err_t err;
+				err = esp_wifi_stop();
+				ESP_LOGI(TAG, "esp_wifi_stop: %s", esp_err_to_name(err));
+				err = esp_wifi_set_mode(WIFI_MODE_STA);
+				ESP_LOGI(TAG, "esp_wifi_set_mode STA: %s", esp_err_to_name(err));
+				if (s_has_saved_cfg)
+				{
+					err = esp_wifi_set_config(WIFI_IF_STA, &s_saved_wifi_cfg);
+					ESP_LOGI(TAG, "esp_wifi_set_config (restore): %s", esp_err_to_name(err));
+				}
+				err = esp_wifi_start();
+				ESP_LOGI(TAG, "esp_wifi_start: %s", esp_err_to_name(err));
 				break;
+			}
 			default:
 				break;
 		}
@@ -241,10 +259,10 @@ bool app_wifi_handler_init(void)
 	}
 	wifi_event_group = xEventGroupCreate();
 
-	esp_netif_t* wifi_netif = esp_netif_create_default_wifi_sta();
+	s_wifi_netif = esp_netif_create_default_wifi_sta();
 
 	// Register our event handler for Wi-Fi, IP and Provisioning related events
-	err = esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, wifi_netif);
+	err = esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, s_wifi_netif);
 	if (err != ESP_OK)
 	{
 		ESP_LOGE(TAG, "Failed to register Wi-Fi event handler: %s", esp_err_to_name(err));
@@ -283,6 +301,18 @@ bool app_wifi_handler_init(void)
 	{
 		ESP_LOGE(TAG, "Failed to register WIFI_PROV_EVENT handler: %s", esp_err_to_name(err));
 		return false;
+	}
+
+	// If already provisioned, skip the manager and connect directly
+	bool provisioned = false;
+	wifi_prov_mgr_is_provisioned(&provisioned);
+	if (provisioned)
+	{
+		ESP_LOGI(TAG, "Already provisioned — starting Wi-Fi STA");
+		s_prov_mgr_init = false;
+		wifi_prov_mgr_deinit();
+		esp_wifi_set_mode(WIFI_MODE_STA);
+		esp_wifi_start(); // WIFI_EVENT_STA_START handler calls esp_wifi_connect()
 	}
 #endif /* CONFIG_APP_WIFI_USE_UNIFIED_PROVISIONING */
 
@@ -352,6 +382,16 @@ std::unique_ptr<uint8_t[]> wifi_handler_start_provisioning(void)
 	xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_EVENT);
 	s_prov_failed = false;
 
+	// Save current WiFi config — provisioning wipes the RAM config
+	s_has_saved_cfg = false;
+	wifi_config_t cfg = {};
+	if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK && strlen((char*)cfg.sta.ssid) > 0)
+	{
+		s_saved_wifi_cfg = cfg;
+		s_has_saved_cfg  = true;
+		ESP_LOGI(TAG, "Saved WiFi config for SSID: %s", cfg.sta.ssid);
+	}
+
 	char                 service_name[12];
 	char                 pop[9];
 	wifi_prov_security_t security = WIFI_PROV_SECURITY_1;
@@ -403,4 +443,26 @@ bool wifi_handler_is_connected(void)
 bool wifi_handler_prov_failed(void)
 {
 	return s_prov_failed;
+}
+
+void wifi_handler_get_info(char* ssid, size_t ssid_len, char* ip, size_t ip_len, bool* connected)
+{
+	*connected = false;
+	if (ssid && ssid_len) ssid[0] = '\0';
+	if (ip && ip_len)     ip[0]   = '\0';
+
+	wifi_ap_record_t ap;
+	if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK)
+	{
+		*connected = true;
+		if (ssid && ssid_len)
+			snprintf(ssid, ssid_len, "%s", (char*)ap.ssid);
+	}
+
+	if (s_wifi_netif && ip && ip_len)
+	{
+		esp_netif_ip_info_t ip_info;
+		if (esp_netif_get_ip_info(s_wifi_netif, &ip_info) == ESP_OK)
+			snprintf(ip, ip_len, IPSTR, IP2STR(&ip_info.ip));
+	}
 }

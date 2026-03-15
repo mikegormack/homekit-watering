@@ -567,6 +567,11 @@ display.fillRect(30,40, 20, 20);
 		if (wifi_handler_is_connected()) return MenuCtx::ProvStatus::Connected;
 		return MenuCtx::ProvStatus::InProgress;
 	};
+	menu_ctx.wifi_info = []() -> MenuCtx::WifiInfo {
+		MenuCtx::WifiInfo info{};
+		wifi_handler_get_info(info.ssid, sizeof(info.ssid), info.ip, sizeof(info.ip), &info.connected);
+		return info;
+	};
 	/* Register an event handler for HomeKit specific events.
 	 * All event handlers should be registered only after app_wifi_init()
 	 */

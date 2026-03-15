@@ -23,6 +23,7 @@ set(SOURCES
 	EvtTimeScreen.cpp
 	MoistThrScreen.cpp
 	WifiProvScreen.cpp
+	WifiStatusScreen.cpp
 )
 
 idf_component_register(
