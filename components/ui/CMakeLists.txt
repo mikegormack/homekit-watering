@@ -8,6 +8,7 @@ set (REQ
 	button
 	output
 	qrcodegen
+	nvs_flash
 )
 
 set(INCL
@@ -22,8 +23,11 @@ set(SOURCES
 	SettingsMenu.cpp
 	EvtTimeScreen.cpp
 	MoistThrScreen.cpp
+	TimezoneScreen.cpp
 	WifiProvScreen.cpp
 	WifiStatusScreen.cpp
+	HapQrScreen.cpp
+	HapResetScreen.cpp
 )
 
 idf_component_register(

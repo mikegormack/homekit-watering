@@ -14,6 +14,7 @@
  * Helper functions for softAP start/stop will be used
  */
 
+#include <ctime>
 #include <memory>
 
 #include <string.h>
@@ -47,9 +48,11 @@
 
 #include <nvs.h>
 #include <nvs_flash.h>
+#include <esp_sntp.h>
 #include <app_wifi_handler.h>
 
 static const char*        TAG = "app_wifi_handler";
+
 static const int          WIFI_CONNECTED_EVENT = BIT0;
 static EventGroupHandle_t wifi_event_group;
 static bool               s_prov_mgr_init = false;
@@ -69,6 +72,28 @@ static bool               s_has_saved_cfg = false;
 
 #define CREDENTIALS_NAMESPACE "rmaker_creds"
 #define RANDOM_NVS_KEY        "random"
+
+static void ntp_sync_cb(struct timeval *tv)
+{
+	char buf[32];
+	time_t now = tv->tv_sec;
+	std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+	ESP_LOGI(TAG, "NTP sync: %s", buf);
+}
+
+static void ntp_start(void)
+{
+	static bool s_ntp_started = false;
+	if (s_ntp_started)
+		return;
+	s_ntp_started = true;
+
+	esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+	esp_sntp_setservername(0, CONFIG_NTP_SERVER);
+	esp_sntp_set_time_sync_notification_cb(ntp_sync_cb);
+	esp_sntp_init();
+	ESP_LOGI(TAG, "NTP started: server=%s tz=%s", CONFIG_NTP_SERVER, CONFIG_NTP_TIMEZONE);
+}
 
 static std::unique_ptr<uint8_t[]> gen_qr_code(const char* name, const char* pop, const char* transport)
 {
@@ -156,6 +181,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 	{
 		ip_event_got_ip_t* event = (ip_event_got_ip_t*)event_data;
 		ESP_LOGI(TAG, "Connected with IP Address:" IPSTR, IP2STR(&event->ip_info.ip));
+		ntp_start();
 		// Signal main application to continue execution
 		xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_EVENT);
 	}

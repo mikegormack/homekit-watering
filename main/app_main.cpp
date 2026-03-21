@@ -27,9 +27,11 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <ctime>
 #include <memory>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_timer.h>
 #include <esp_event.h>
 #include <esp_log.h>
 #include <nvs_flash.h>
@@ -44,10 +46,15 @@
 #include <hap_fw_upgrade.h>
 #include <iot_button.h>
 
+#include <esp_wifi.h>
 #include <app_hap_setup_payload.h>
 #include <app_wifi_handler.h>
 
-#include <OutputChannels.h>
+extern const char* timezone_posix(int idx); // defined in TimezoneScreen.cpp
+
+#include "ValveChannel.h"
+#include "Scheduler.h"
+#include "OtaServer.h"
 #include <MoistInput.h>
 #include <UI.h>
 
@@ -61,15 +68,17 @@
 /*  Required for server verification during OTA, PEM format as string  */
 char server_cert[] = {};
 
-static hap_serv_t* service;
+static std::unique_ptr<ValveChannel> s_valves[2];
+static Scheduler                     s_sched;
+static OtaServer                     s_ota_server;
 
 static std::unique_ptr<SSD1306I2C> disp_p;
 static std::unique_ptr<UI>         ui_p;
 static std::unique_ptr<MoistInput> moisture_p;
 static std::shared_ptr<MCP23017>   ioexp_p;
-static OutputChannels              out_ch;
 
-static MenuCtx menu_ctx(out_ch);
+static MenuCtx menu_ctx;
+static int32_t s_tz_idx = 0;
 
 static const char* TAG = "HAP Sprinkler";
 
@@ -161,191 +170,13 @@ static void sprinkler_hap_event_handler(void* arg, esp_event_base_t event_base, 
 		}
 		break;
 		case HAP_EVENT_PAIRING_MODE_TIMED_OUT:
-			ESP_LOGI(TAG, "Pairing Mode timed out. Please reboot the device.");
+			ESP_LOGI(TAG, "Pairing Mode timed out.");
+			menu_ctx.hap_pairing_timed_out = true;
 			break;
 		default:
 			/* Silently ignore unknown events */
 			break;
 	}
-}
-
-static int sprinkler_read(hap_char_t* hc, hap_status_t* status_code, void* serv_priv, void* read_priv)
-{
-	if (hap_req_get_ctrl_id(read_priv))
-	{
-		ESP_LOGI(TAG, "Received read from %s", hap_req_get_ctrl_id(read_priv));
-	}
-	ESP_LOGI(TAG, "UUID %s", hap_char_get_type_uuid(hc));
-
-	/*if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ON))
-	{
-	    *status_code = HAP_STATUS_SUCCESS;
-	    ESP_LOGI(TAG, "On");
-	}*/
-	const hap_val_t* cur_val;
-	if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ACTIVE))
-	{
-		*status_code = HAP_STATUS_SUCCESS;
-		cur_val = hap_char_get_val(hc);
-		ESP_LOGI(TAG, "Active: %s", cur_val->b ? "1" : "0");
-	}
-	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_IN_USE))
-	{
-		*status_code = HAP_STATUS_SUCCESS;
-		cur_val = hap_char_get_val(hc);
-		ESP_LOGI(TAG, "In Use: %s", cur_val->b ? "1" : "0");
-	}
-	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_NAME))
-	{
-		*status_code = HAP_STATUS_SUCCESS;
-		cur_val = hap_char_get_val(hc);
-		ESP_LOGI(TAG, "Name: %s", cur_val->s);
-	}
-	/*else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_PROGRAM_MODE))
-	{
-	    *status_code = HAP_STATUS_SUCCESS;
-	    ESP_LOGI(TAG, "Program Mode");
-	}*/
-	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_SET_DURATION))
-	{
-		*status_code = HAP_STATUS_SUCCESS;
-		cur_val = hap_char_get_val(hc);
-		ESP_LOGI(TAG, "Set Duration: %lu", cur_val->u);
-	}
-	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_REMAINING_DURATION))
-	{
-		*status_code = HAP_STATUS_SUCCESS;
-		cur_val = hap_char_get_val(hc);
-		ESP_LOGI(TAG, "Rem Duration: %lu", cur_val->u);
-	}
-	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_VALVE_TYPE))
-	{
-		*status_code = HAP_STATUS_SUCCESS;
-		cur_val = hap_char_get_val(hc);
-		ESP_LOGI(TAG, "Valve Type: %lu", cur_val->u);
-	}
-	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_WATER_LEVEL))
-	{
-		*status_code = HAP_STATUS_SUCCESS;
-		cur_val = hap_char_get_val(hc);
-		ESP_LOGI(TAG, "Water level: %f", cur_val->f);
-	}
-	else if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_CURRENT_RELATIVE_HUMIDITY))
-	{
-		*status_code = HAP_STATUS_SUCCESS;
-		cur_val = hap_char_get_val(hc);
-		ESP_LOGI(TAG, "Humidty: %f", cur_val->f);
-	}
-	/* if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ROTATION_DIRECTION)) {
-
-	     const hap_val_t *cur_val = hap_char_get_val(hc);
-
-	     hap_val_t new_val;
-	     if (cur_val->i == 1) {
-	         new_val.i = 0;
-	     } else {
-	         new_val.i = 1;
-	     }
-	     hap_char_update_val(hc, &new_val);
-	     *status_code = HAP_STATUS_SUCCESS;
-	 }*/
-	return HAP_SUCCESS;
-}
-
-static int sprinkler_write(hap_write_data_t write_data[], int count, void* serv_priv, void* write_priv)
-{
-	if (hap_req_get_ctrl_id(write_priv))
-	{
-		ESP_LOGI(TAG, "Received write from %s", hap_req_get_ctrl_id(write_priv));
-	}
-	ESP_LOGI(TAG, "Sprinkler write called with %d chars", count);
-	int               i, ret = HAP_SUCCESS;
-	hap_write_data_t* write;
-	for (i = 0; i < count; i++)
-	{
-		write = &write_data[i];
-		ESP_LOGI(TAG, "UUID %s", hap_char_get_type_uuid(write->hc));
-
-		if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ACTIVE))
-		{
-			hap_char_update_val(write->hc, &(write->val));
-
-			hap_char_t* in_use = hap_serv_get_char_by_uuid(service, HAP_CHAR_UUID_IN_USE);
-
-			ESP_LOGI(TAG, "Srv Addr %lu", (uint32_t)service);
-			ESP_LOGI(TAG, "Srv Priv Addr %lu", (uint32_t)serv_priv);
-			hap_val_t new_val;
-
-			if (write->val.b)
-			{
-				ESP_LOGI(TAG, "Turned ON");
-			}
-			else
-			{
-				ESP_LOGI(TAG, "Turned OFF");
-			}
-			new_val.u = write->val.u;
-			int res = hap_char_update_val(in_use, &new_val);
-
-			ESP_LOGI(TAG, "Update Char Res %d", res);
-
-			// const hap_val_t *cur_val = hap_char_get_val(in_use);
-			// ESP_LOGI(TAG, "In Use: %s", cur_val->b ? "1" : "0");
-
-			*(write->status) = HAP_STATUS_SUCCESS;
-		}
-		else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_IN_USE))
-		{
-			hap_char_update_val(write->hc, &(write->val));
-			*(write->status) = HAP_STATUS_SUCCESS;
-		}
-		else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_PROGRAM_MODE))
-		{
-			hap_char_update_val(write->hc, &(write->val));
-			*(write->status) = HAP_STATUS_SUCCESS;
-		}
-		else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_SET_DURATION))
-		{
-			hap_char_update_val(write->hc, &(write->val));
-			ESP_LOGI(TAG, "Set Duration %lu", write->val.u);
-
-			hap_char_t* rem_dur = hap_serv_get_char_by_uuid(service, HAP_CHAR_UUID_REMAINING_DURATION);
-			hap_val_t   new_val;
-			new_val.u = write->val.u - 100;
-			hap_char_update_val(rem_dur, &new_val);
-
-			*(write->status) = HAP_STATUS_SUCCESS;
-		}
-		else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_REMAINING_DURATION))
-		{
-			hap_char_update_val(write->hc, &(write->val));
-			*(write->status) = HAP_STATUS_SUCCESS;
-		}
-		else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_WATER_LEVEL))
-		{
-			hap_char_update_val(write->hc, &(write->val));
-			*(write->status) = HAP_STATUS_SUCCESS;
-		}
-		/*else if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ROTATION_DIRECTION))
-		{
-		    if (write->val.i > 1)
-		    {
-		        *(write->status) = HAP_STATUS_VAL_INVALID;
-		        ret = HAP_FAIL;
-		    }
-		    else
-		    {
-		        ESP_LOGI(TAG, "Received Write. Fan %s", write->val.i ? "AntiClockwise" : "Clockwise");
-		        hap_char_update_val(write->hc, &(write->val));
-		        *(write->status) = HAP_STATUS_SUCCESS;
-		    }
-		} */
-		else
-		{
-			*(write->status) = HAP_STATUS_RES_ABSENT;
-		}
-	}
-	return ret;
 }
 
 static bool ioexp_init(i2c_master_bus_handle_t i2c_port)
@@ -374,8 +205,6 @@ static bool ioexp_init(i2c_master_bus_handle_t i2c_port)
 	return true;
 }
 
-
-
 /*The main thread for handling the Fan Accessory */
 static void sprinkler_thread_entry(void* p)
 {
@@ -393,7 +222,28 @@ static void sprinkler_thread_entry(void* p)
 		return;
 	}
 
-	out_ch.load();
+	// Create valve instances early so menu_ctx.out_ch[] is valid before UI creation
+	s_valves[0] = std::make_unique<ValveChannel>(0, "Zone 1", "CH1");
+	s_valves[1] = std::make_unique<ValveChannel>(1, "Zone 2", "CH2");
+	s_valves[0]->load();
+	s_valves[1]->load();
+	menu_ctx.out_ch[0] = s_valves[0].get();
+	menu_ctx.out_ch[1] = s_valves[1].get();
+
+	// Load saved timezone index and moisture threshold, apply before WiFi/NTP starts
+	{
+		nvs_handle_t h;
+		if (nvs_open("storage", NVS_READONLY, &h) == ESP_OK)
+		{
+			nvs_get_i32(h, "tz_idx", &s_tz_idx);
+			uint8_t thr = 50;
+			nvs_get_u8(h, "moist_thr", &thr);
+			menu_ctx.moist_threshold = thr;
+			nvs_close(h);
+		}
+		setenv("TZ", timezone_posix((int)s_tz_idx), 1);
+		tzset();
+	}
 
 	i2c_master_bus_config_t i2c_bus_config = {.i2c_port = -1,
 	                                          .sda_io_num = I2C_SDA_PIN,
@@ -417,41 +267,45 @@ static void sprinkler_thread_entry(void* p)
 	{
 		ESP_LOGE(TAG, "ioexp init failed");
 	}
+
+	// Wire valve output callbacks to IO expander GPIO pins (read-modify-write to preserve other pins)
+	s_valves[0]->setOutputFn(
+	    [](bool on)
+	    {
+		    if (!ioexp_p)
+			    return;
+		    uint16_t gpio = 0;
+		    ioexp_p->getGPIO(&gpio);
+		    if (on)
+			    gpio |= VALVE_CH0_IOEXP_MASK;
+		    else
+			    gpio &= ~VALVE_CH0_IOEXP_MASK;
+		    ioexp_p->setGPIO(gpio);
+	    });
+	s_valves[1]->setOutputFn(
+	    [](bool on)
+	    {
+		    if (!ioexp_p)
+			    return;
+		    uint16_t gpio = 0;
+		    ioexp_p->getGPIO(&gpio);
+		    if (on)
+			    gpio |= VALVE_CH1_IOEXP_MASK;
+		    else
+			    gpio &= ~VALVE_CH1_IOEXP_MASK;
+		    ioexp_p->setGPIO(gpio);
+	    });
 	disp_p = std::make_unique<SSD1306I2C>(0x3C, bus_handle, GEOMETRY_128_64);
 	if (disp_p->init())
 	{
-
 		disp_p->setContrast(255);
 		disp_p->flipScreenVertically();
 		disp_p->setLogBuffer(5, 30);
 		ui_p = std::make_unique<UI>(*disp_p, ioexp_p, menu_ctx);
-		moisture_p = std::make_unique<MoistInput>();
-		// ui_p->HomeScreen();
-		// display.resetDisplay();
-		// display.setColor(BLACK);
-
-		/*display.setColor(WHITE);
-
-		//display.fillCircle(20, 20, 10);
-		//display.setColor(INVERSE);
-		display.drawString(0, 0, "Test");
-
-		display.setFont(ArialMT_Plain_16);
-		display.drawString(50, 40, "Test");
-
-
-		display.setFont(ArialMT_Plain_24);
-
-		display.drawString(50, 20, "Test");
-
-		display.drawBitmap(0, 40, wifi1_icon16x16, 16, 16);
-		//display.drawString(0, 20, "trev mc farkleberry");
-display.fillRect(30,40, 20, 20);
-		display.display();*/
+		moisture_p = std::make_unique<MoistInput>(MOISTURE_ADC_UNIT, MOISTURE_ADC_CHANNEL);
 	}
 
 	hap_acc_t* accessory;
-	// hap_serv_t *service;
 
 	/* Configure HomeKit core to make the Accessory name (and thus the WAC SSID) unique,
 	 * instead of the default configuration wherein only the WAC SSID is made unique.
@@ -488,24 +342,15 @@ display.fillRect(30,40, 20, 20);
 	/* Add Wi-Fi Transport service required for HAP Spec R16 */
 	hap_acc_add_wifi_transport_service(accessory, 0);
 
-	/* Create the Fan Service. Include the "name" since this is a user visible service  */
-	/*service = hap_serv_valve_create(0, 0, 1);
-	hap_serv_add_char(service, hap_char_name_create("My Sprinkler"));
-	hap_serv_add_char(service, hap_char_set_duration_create(1000));
-	hap_serv_add_char(service, hap_char_remaining_duration_create(1000));*/
+	/* Wire moisture getter, threshold, and scheduler into valve channels, then create HAP services */
+	s_valves[0]->setMoistureGetter([&]() -> float { return moisture_p ? (float)moisture_p->getMoisture() : 0.0f; });
+	s_valves[0]->setMoistureThreshold(&menu_ctx.moist_threshold);
+	s_valves[0]->registerWithScheduler(s_sched);
+	hap_acc_add_serv(accessory, s_valves[0]->createService());
 
-	service = hap_serv_humidity_sensor_create(50.5);
-	hap_serv_add_char(service, hap_char_name_create((char*)"Water Level"));
-	hap_serv_add_char(service, hap_char_water_level_create(75));
-
-	/* Set the write callback for the service */
-	hap_serv_set_write_cb(service, sprinkler_write);
-
-	/* Set the read callback for the service (optional) */
-	hap_serv_set_read_cb(service, sprinkler_read);
-
-	/* Add the Fan Service to the Accessory Object */
-	hap_acc_add_serv(accessory, service);
+	s_valves[1]->setMoistureThreshold(&menu_ctx.moist_threshold);
+	s_valves[1]->registerWithScheduler(s_sched);
+	hap_acc_add_serv(accessory, s_valves[1]->createService());
 
 	/* Create the Firmware Upgrade HomeKit Custom Service.
 	 * Please refer the FW Upgrade documentation under components/homekit/extras/include/hap_fw_upgrade.h
@@ -548,8 +393,24 @@ display.fillRect(30,40, 20, 20);
 	hap_set_setup_id(CONFIG_EXAMPLE_SETUP_ID);
 #ifdef CONFIG_APP_WIFI_USE_WAC_PROVISIONING
 	app_hap_setup_payload(CONFIG_EXAMPLE_SETUP_CODE, CONFIG_EXAMPLE_SETUP_ID, true, cfg.cid);
+	{
+		char* uri = esp_hap_get_setup_payload(CONFIG_EXAMPLE_SETUP_CODE, CONFIG_EXAMPLE_SETUP_ID, true, cfg.cid);
+		if (uri)
+		{
+			menu_ctx.hap_setup_uri = uri;
+			free(uri);
+		}
+	}
 #else
 	app_hap_setup_payload(CONFIG_EXAMPLE_SETUP_CODE, CONFIG_EXAMPLE_SETUP_ID, false, cfg.cid);
+	{
+		char* uri = esp_hap_get_setup_payload(CONFIG_EXAMPLE_SETUP_CODE, CONFIG_EXAMPLE_SETUP_ID, false, cfg.cid);
+		if (uri)
+		{
+			menu_ctx.hap_setup_uri = uri;
+			free(uri);
+		}
+	}
 #endif
 #endif
 
@@ -559,28 +420,77 @@ display.fillRect(30,40, 20, 20);
 	/* Initialize Wi-Fi */
 	app_wifi_handler_init();
 
+	/* Start OTA web server (browse to device IP to upload firmware) */
+	s_ota_server.start();
+
 	/* Wire wifi callbacks into menu context for WifiProvScreen */
-	menu_ctx.start_prov  = []() { return wifi_handler_start_provisioning(); };
-	menu_ctx.stop_prov   = []() { wifi_handler_stop_provisioning(); };
-	menu_ctx.prov_status = []() -> MenuCtx::ProvStatus {
-		if (wifi_handler_prov_failed()) return MenuCtx::ProvStatus::Failed;
-		if (wifi_handler_is_connected()) return MenuCtx::ProvStatus::Connected;
+	menu_ctx.start_prov = []() { return wifi_handler_start_provisioning(); };
+	menu_ctx.stop_prov = []() { wifi_handler_stop_provisioning(); };
+	menu_ctx.prov_status = []() -> MenuCtx::ProvStatus
+	{
+		if (wifi_handler_prov_failed())
+			return MenuCtx::ProvStatus::Failed;
+		if (wifi_handler_is_connected())
+			return MenuCtx::ProvStatus::Connected;
 		return MenuCtx::ProvStatus::InProgress;
 	};
-	menu_ctx.wifi_info = []() -> MenuCtx::WifiInfo {
+	menu_ctx.wifi_info = []() -> MenuCtx::WifiInfo
+	{
 		MenuCtx::WifiInfo info{};
 		wifi_handler_get_info(info.ssid, sizeof(info.ssid), info.ip, sizeof(info.ip), &info.connected);
 		return info;
+	};
+	menu_ctx.rssi_getter = []() -> int8_t
+	{
+		wifi_ap_record_t ap_info;
+		int8_t           rssi = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) ? ap_info.rssi : 0;
+		ESP_LOGI(TAG, "rssi %d", rssi);
+		return rssi;
+	};
+	menu_ctx.tz_getter = []() -> int
+	{
+		nvs_handle_t h;
+		int32_t      idx = 0;
+		if (nvs_open("storage", NVS_READONLY, &h) == ESP_OK)
+		{
+			nvs_get_i32(h, "tz_idx", &idx);
+			nvs_close(h);
+		}
+		return (int)idx;
+	};
+	menu_ctx.moist_getter = [&]() -> uint8_t { return moisture_p ? moisture_p->getMoisture() : 0; };
+	menu_ctx.ch_active = [](int ch) -> bool { return s_valves[ch] ? s_valves[ch]->isActive() : false; };
+	menu_ctx.ch_remaining = [](int ch) -> uint32_t { return s_valves[ch] ? s_valves[ch]->getRemaining() : 0; };
+	menu_ctx.hap_is_paired = []() -> bool { return hap_get_paired_controller_count() > 0; };
+	menu_ctx.hap_reopen_pairing = []()
+	{
+		ESP_LOGI(TAG, "Reopening HAP pairing window");
+		menu_ctx.hap_pairing_timed_out = false;
+		hap_pair_setup_re_enable();
+	};
+	menu_ctx.hap_reset_pairings = []() { hap_reset_pairings(); };
+	menu_ctx.tz_setter = [](int idx)
+	{
+		setenv("TZ", timezone_posix(idx), 1);
+		tzset();
+		nvs_handle_t h;
+		if (nvs_open("storage", NVS_READWRITE, &h) == ESP_OK)
+		{
+			nvs_set_i32(h, "tz_idx", (int32_t)idx);
+			nvs_commit(h);
+			nvs_close(h);
+		}
 	};
 	/* Register an event handler for HomeKit specific events.
 	 * All event handlers should be registered only after app_wifi_init()
 	 */
 	esp_event_handler_register(HAP_EVENT, ESP_EVENT_ANY_ID, &sprinkler_hap_event_handler, NULL);
 
+	/* Start the schedule checker */
+	s_sched.start();
+
 	/* After all the initializations are done, start the HAP core */
-	// hap_start();
-	/* Start Wi-Fi */
-	// app_wifi_start(portMAX_DELAY);
+	hap_start();
 	/* The task ends here. The read/write callbacks will be invoked by the HAP Framework */
 	vTaskDelete(NULL);
 }

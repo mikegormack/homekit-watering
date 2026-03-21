@@ -23,4 +23,18 @@ menu "Example Configuration"
         help
             Setup id to be used for HomeKot pairing, if hard-coded setup code is enabled.
 
+
+    config NTP_SERVER
+        string "NTP Server"
+        default "pool.ntp.org"
+        help
+            Hostname of the NTP server used to synchronise the system clock.
+
+    config NTP_TIMEZONE
+        string "Timezone (POSIX TZ string)"
+        default "UTC0"
+        help
+            POSIX timezone string, e.g. "UTC0", "GMT0BST,M3.5.0/1,M10.5.0"
+            or "AEST-10AEDT,M10.1.0,M4.1.0/3". Applied via setenv("TZ",...).
+
 endmenu

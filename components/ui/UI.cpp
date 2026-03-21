@@ -75,7 +75,7 @@ UI::UI(SSD1306I2C &display, std::shared_ptr<MCP23017> io_exp, MenuCtx& menu_ctx)
 	m_menu_ctx(menu_ctx)
 {
 	m_io_exp->setEventCallback(io_int_callback, this);
-	m_current_scr = std::make_unique<HomeScreen>(display, 0);
+	m_current_scr = std::make_unique<HomeScreen>(display, 0, menu_ctx);
 
 	const esp_timer_create_args_t timer_args = {
 		.callback = &button_tmr_handler,
@@ -122,7 +122,7 @@ void UI::ui_thread_entry(void *p)
 			ctx->m_current_scr->update();
 			if (ctx->m_current_scr->isClosed())
 			{
-				ctx->m_current_scr = std::make_unique<HomeScreen>(ctx->m_display, 0);
+				ctx->m_current_scr = std::make_unique<HomeScreen>(ctx->m_display, 0, ctx->m_menu_ctx);
 				ctx->m_menu_active = false;
 			}
 		}

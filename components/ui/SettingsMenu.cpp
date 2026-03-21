@@ -5,8 +5,11 @@
 #include <SettingsMenu.h>
 #include <EvtTimeScreen.h>
 #include <MoistThrScreen.h>
+#include <TimezoneScreen.h>
 #include <WifiProvScreen.h>
 #include <WifiStatusScreen.h>
+#include <HapQrScreen.h>
+#include <HapResetScreen.h>
 
 #include <SSD1306I2C.h>
 #include <icons.h>
@@ -33,18 +36,19 @@ void SettingsMenu::createMenu()
 {
 	m_menu_wifi.emplace_back(wifi1_icon16x16, "Status", nullptr, std::make_unique<WifiStatusScreen>(m_display, m_timeout, m_menu_ctx));
 	m_menu_wifi.emplace_back(wifi1_icon16x16, "Provision", nullptr, std::make_unique<WifiProvScreen>(m_display, m_menu_ctx, 6000 /* 60s */));
+	m_menu_wifi.emplace_back(apple_icon16x16, "HomeKit QR", nullptr, std::make_unique<HapQrScreen>(m_display, m_timeout, m_menu_ctx));
+	m_menu_wifi.emplace_back(apple_icon16x16, "Reset Pairing", nullptr, std::make_unique<HapResetScreen>(m_display, m_timeout, m_menu_ctx));
 
-	auto ch = m_menu_ctx.m_out_ch.getChannel(CH_ID_WATER_1);
-	if (ch != nullptr)
+	if (m_menu_ctx.out_ch[0] != nullptr)
 	{
-		m_menu_base.emplace_back(clock_icon16x16, "CH1 Time", nullptr, std::make_unique<EvtTimeScreen>(m_display, m_timeout, *ch));
+		m_menu_base.emplace_back(clock_icon16x16, "CH1 Time", nullptr, std::make_unique<EvtTimeScreen>(m_display, m_timeout, *m_menu_ctx.out_ch[0]));
 	}
-	ch = m_menu_ctx.m_out_ch.getChannel(CH_ID_WATER_2);
-	if (ch != nullptr)
+	if (m_menu_ctx.out_ch[1] != nullptr)
 	{
-		m_menu_base.emplace_back(clock_icon16x16, "CH2 Time", nullptr, std::make_unique<EvtTimeScreen>(m_display, m_timeout, *ch));
+		m_menu_base.emplace_back(clock_icon16x16, "CH2 Time", nullptr, std::make_unique<EvtTimeScreen>(m_display, m_timeout, *m_menu_ctx.out_ch[1]));
 	}
-	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Thr", nullptr, std::make_unique<MoistThrScreen>(m_display, m_timeout, m_moist_val));
+	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Thr", nullptr, std::make_unique<MoistThrScreen>(m_display, m_timeout, m_menu_ctx));
+	m_menu_base.emplace_back(clock_icon16x16, "Timezone", nullptr, std::make_unique<TimezoneScreen>(m_display, m_timeout, m_menu_ctx));
 	m_menu_base.emplace_back(wifi1_icon16x16, "WIFI", &m_menu_wifi, nullptr);
 	m_menu_base.emplace_back(clock_icon16x16, "Info", nullptr, nullptr);
 }

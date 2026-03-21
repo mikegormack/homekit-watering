@@ -18,4 +18,15 @@
 #define BTN_UP_IOEXP_MASK   (1 << BTN_UP_IOEXP_PIN)
 #define BTN_DN_IOEXP_MASK   (1 << BTN_DN_IOEXP_PIN)
 
+// Moisture sensor ADC input (GPIO39 = ADC1 channel 3)
+#define MOISTURE_ADC_UNIT    ADC_UNIT_1
+#define MOISTURE_ADC_CHANNEL ADC_CHANNEL_3
+
+// Valve output pins (Port A, configured as outputs)
+#define VALVE_CH0_IOEXP_PIN  0
+#define VALVE_CH1_IOEXP_PIN  1
+
+#define VALVE_CH0_IOEXP_MASK (1 << VALVE_CH0_IOEXP_PIN)
+#define VALVE_CH1_IOEXP_MASK (1 << VALVE_CH1_IOEXP_PIN)
+
 #define ARRAY_SIZE(x)       (sizeof(x)/sizeof(x[0]))

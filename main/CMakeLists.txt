@@ -7,6 +7,7 @@ set (req
 	esp_hap_apple_profiles
 	esp_hap_extras
 	esp_wifi
+	lwip
 	wifi_provisioning
 	#app_wifi
 	app_hap_setup_payload
@@ -15,6 +16,8 @@ set (req
 	output
 	input
 	qrcodegen
+	esp_http_server
+	app_update
 )
 
 set(incl
@@ -26,6 +29,9 @@ set(incl
 set (srcs
 	app_main.cpp
 	app_wifi_handler.cpp
+	ValveChannel.cpp
+	Scheduler.cpp
+	OtaServer.cpp
 )
 
 idf_component_register(

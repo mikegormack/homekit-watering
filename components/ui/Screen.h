@@ -34,6 +34,7 @@ const uint8_t clock_icon16x16[32] = CLOCK_ICON16X16;
 const uint8_t timer_icon16x16[32] = TIMER_ICON16X16;
 const uint8_t tool_icon16x16[32] = TOOL_ICON16X16;
 const uint8_t water_tap_icon16x16[32] = WATER_TAP_ICON16X16;
+const uint8_t apple_icon16x16[32] = APPLE_ICON16X16;
 
 class Screen
 {
