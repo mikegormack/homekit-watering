@@ -45,8 +45,8 @@ void HapResetScreen::receiveEvent(evt_t* evt)
     if (evt->id == BTN_SEL_ID && evt->type == EVT_BTN_HOLD)
     {
         ESP_LOGI(TAG, "Resetting HAP pairings");
-        if (m_menu_ctx.hap_reset_pairings)
-            m_menu_ctx.hap_reset_pairings();
+        if (m_menu_ctx.hap.reset_pairings)
+            m_menu_ctx.hap.reset_pairings();
     }
     else if (evt->type == EVT_BTN_PRESS)
     {

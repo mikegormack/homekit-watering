@@ -25,18 +25,18 @@ void HapQrScreen::refreshTimeout()
     m_refresh  = true;
 
     // Check if already paired
-    if (m_menu_ctx.hap_is_paired && m_menu_ctx.hap_is_paired())
+    if (m_menu_ctx.hap.is_paired && m_menu_ctx.hap.is_paired())
     {
         m_state = State::Paired;
         return;
     }
 
     // If pairing window timed out, reopen it
-    if (m_menu_ctx.hap_pairing_timed_out)
+    if (m_menu_ctx.hap.pairing_timed_out)
     {
         m_state = State::TimedOut;
-        if (m_menu_ctx.hap_reopen_pairing)
-            m_menu_ctx.hap_reopen_pairing();
+        if (m_menu_ctx.hap.reopen_pairing)
+            m_menu_ctx.hap.reopen_pairing();
         m_state = State::QR;
     }
     else
@@ -44,13 +44,13 @@ void HapQrScreen::refreshTimeout()
         m_state = State::QR;
     }
 
-    if (m_menu_ctx.hap_setup_uri.empty())
+    if (m_menu_ctx.hap.setup_uri.empty())
     {
         ESP_LOGW(TAG, "No HomeKit setup URI available");
         return;
     }
 
-    const char* uri = m_menu_ctx.hap_setup_uri.c_str();
+    const char* uri = m_menu_ctx.hap.setup_uri.c_str();
 
     static const int buf_len = qrcodegen_BUFFER_LEN_MAX;
     auto tmp = std::make_unique<uint8_t[]>(buf_len);

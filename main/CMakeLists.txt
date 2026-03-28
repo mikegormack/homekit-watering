@@ -18,6 +18,7 @@ set (req
 	qrcodegen
 	esp_http_server
 	app_update
+	json
 )
 
 set(incl
@@ -32,6 +33,8 @@ set (srcs
 	ValveChannel.cpp
 	Scheduler.cpp
 	OtaServer.cpp
+	ControlServer.cpp
+	WebBase.cpp
 )
 
 idf_component_register(

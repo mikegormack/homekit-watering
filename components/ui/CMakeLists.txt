@@ -9,6 +9,7 @@ set (REQ
 	output
 	qrcodegen
 	nvs_flash
+	app_update
 )
 
 set(INCL
@@ -28,6 +29,8 @@ set(SOURCES
 	WifiStatusScreen.cpp
 	HapQrScreen.cpp
 	HapResetScreen.cpp
+	InfoScreen.cpp
+	MoistCalScreen.cpp
 )
 
 idf_component_register(

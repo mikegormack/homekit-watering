@@ -11,8 +11,6 @@
 #include <SettingsMenu.h>
 
 #include <ctime>
-#include <sstream>
-#include <iomanip>
 #include <memory>
 #include <mutex>
 
@@ -41,38 +39,19 @@ static const char *TAG = "UI";
 
 #define MENU_TIMEOUT_MS (10000)
 
-typedef enum
-{
-	BTN_STATE_UP,
-	BTN_STATE_DOWN,
-	BTN_STATE_PRESS,
-	BTN_STATE_LONG_HOLD,
-	BTN_STATE_VLONG_HOLD,
-	BTN_STATE_MAX_HOLD,
-} btn_state_t;
-
-typedef struct
-{
-	const uint8_t id;
-	const uint16_t io_mask;
-	btn_state_t state;
-	uint64_t down_tick;
-	uint8_t rpt_count;
-} btn_t;
-
-static btn_t buttons[] =
-	{
-		{.id = BTN_SEL_ID, .io_mask = BTN_SEL_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0},
-		{.id = BTN_BACK_ID, .io_mask = BTN_BACK_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0},
-		{.id = BTN_UP_ID, .io_mask = BTN_UP_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0},
-		{.id = BTN_DN_ID, .io_mask = BTN_DN_IOEXP_MASK, .state = BTN_STATE_UP, .down_tick = 0, .rpt_count = 0}};
-
-#define NUM_BUTTONS ARRAY_SIZE(buttons)
 
 UI::UI(SSD1306I2C &display, std::shared_ptr<MCP23017> io_exp, MenuCtx& menu_ctx) :
 	m_display(display),
 	m_io_exp(io_exp),
-	m_menu_ctx(menu_ctx)
+	m_menu_ctx(menu_ctx),
+	m_buttons{
+		{BTN_SEL_ID,  BTN_SEL_IOEXP_MASK,  BTN_STATE_UP, 0, 0},
+		{BTN_BACK_ID, BTN_BACK_IOEXP_MASK, BTN_STATE_UP, 0, 0},
+		{BTN_UP_ID,   BTN_UP_IOEXP_MASK,   BTN_STATE_UP, 0, 0},
+		{BTN_DN_ID,   BTN_DN_IOEXP_MASK,   BTN_STATE_UP, 0, 0},
+		{BTN_CH1_ID,  BTN_CH1_IOEXP_MASK,  BTN_STATE_UP, 0, 0},
+		{BTN_CH2_ID,  BTN_CH2_IOEXP_MASK,  BTN_STATE_UP, 0, 0},
+	}
 {
 	m_io_exp->setEventCallback(io_int_callback, this);
 	m_current_scr = std::make_unique<HomeScreen>(display, 0, menu_ctx);
@@ -92,7 +71,7 @@ UI::UI(SSD1306I2C &display, std::shared_ptr<MCP23017> io_exp, MenuCtx& menu_ctx)
 	m_evt_queue = xQueueCreate(EVT_QUEUE_SIZE, sizeof(evt_t));
 	if (m_evt_queue == nullptr)
 	{
-		ESP_LOGE(TAG, "queue create fail %d", res);
+		ESP_LOGE(TAG, "queue create fail");
 	}
 	BaseType_t result = xTaskCreate(ui_thread_entry, "UI Task", 4096, this, 1, NULL);
 	if (result == pdFAIL)
@@ -140,6 +119,13 @@ void UI::ui_thread_entry(void *p)
 					ctx->m_current_scr = std::make_unique<SettingsMenu>(ctx->m_display, (MENU_TIMEOUT_MS / UI_TASK_PERIOD_MS), ctx->m_menu_ctx);
 					ctx->m_menu_active = true;
 				}
+				else if (evt.type == EVT_BTN_HOLD && ctx->m_menu_ctx.valves.toggle)
+				{
+					if (evt.id == BTN_CH1_ID)
+						ctx->m_menu_ctx.valves.toggle(0, DEFAULT_RUN_DURATION_S);
+					else if (evt.id == BTN_CH2_ID)
+						ctx->m_menu_ctx.valves.toggle(1, DEFAULT_RUN_DURATION_S);
+				}
 			}
 		}
 	}
@@ -175,77 +161,77 @@ void UI::process_buttons()
 	}
 	for (int i = 0; i < NUM_BUTTONS; i++)
 	{
-		newState[i] = (pin & buttons[i].io_mask) == 0;
+		newState[i] = (pin & m_buttons[i].io_mask) == 0;
 	}
 
 	ESP_LOGI(TAG, "pin = %04x", pin);
 
 	for (int i = 0; i < NUM_BUTTONS; i++)
 	{
-		if (buttons[i].state == BTN_STATE_UP)
+		if (m_buttons[i].state == BTN_STATE_UP)
 		{
 			if (newState[i])
 			{
 				run_timer = true;
-				buttons[i].down_tick = esp_timer_get_time();
-				buttons[i].state = BTN_STATE_DOWN;
-				// ESP_LOGI(TAG, "Btn %d dn tick %lld", i, buttons[i].down_tick);
+				m_buttons[i].down_tick = esp_timer_get_time();
+				m_buttons[i].state = BTN_STATE_DOWN;
+				// ESP_LOGI(TAG, "Btn %d dn tick %lld", i, m_buttons[i].down_tick);
 			}
 		}
 		else
 		{
 			// ESP_LOGI(TAG, "Btn %d dn tick %lld", i, esp_timer_get_time());
-			uint32_t ms = ((uint32_t)(esp_timer_get_time() - buttons[i].down_tick)) / 1000;
+			uint32_t ms = ((uint32_t)(esp_timer_get_time() - m_buttons[i].down_tick)) / 1000;
 			if (ms < BTN_MAX_DOWN_TIME)
 			{
 				run_timer = true;
 				if (newState[i])
 				{
-					if ((buttons[i].state == BTN_STATE_DOWN) && (ms > BTN_LONG_PRESS_MS))
+					if ((m_buttons[i].state == BTN_STATE_DOWN) && (ms > BTN_LONG_PRESS_MS))
 					{
-						buttons[i].state = BTN_STATE_LONG_HOLD;
-						buttons[i].rpt_count = 0;
+						m_buttons[i].state = BTN_STATE_LONG_HOLD;
+						m_buttons[i].rpt_count = 0;
 						ESP_LOGI(TAG, "******** Btn %d long hold", i);
-						evt_t evt = {.id = buttons[i].id, .type = EVT_BTN_HOLD};
+						evt_t evt = {.id = m_buttons[i].id, .type = EVT_BTN_HOLD};
 						xQueueSend(m_evt_queue, &evt, 0);
 					}
-					else if ((buttons[i].state == BTN_STATE_LONG_HOLD) && (ms > BTN_VLONG_PRESS_MS))
+					else if ((m_buttons[i].state == BTN_STATE_LONG_HOLD) && (ms > BTN_VLONG_PRESS_MS))
 					{
-						buttons[i].state = BTN_STATE_VLONG_HOLD;
+						m_buttons[i].state = BTN_STATE_VLONG_HOLD;
 						ESP_LOGI(TAG, "********** Btn %d v long hold", i);
-						evt_t evt = {.id = buttons[i].id, .type = EVT_BTN_LONG_HOLD};
+						evt_t evt = {.id = m_buttons[i].id, .type = EVT_BTN_LONG_HOLD};
 						xQueueSend(m_evt_queue, &evt, 0);
 					}
-					else if ((buttons[i].state == BTN_STATE_LONG_HOLD) || (buttons[i].state == BTN_STATE_VLONG_HOLD))
+					else if ((m_buttons[i].state == BTN_STATE_LONG_HOLD) || (m_buttons[i].state == BTN_STATE_VLONG_HOLD))
 					{
-						buttons[i].rpt_count++;
-						if (buttons[i].rpt_count == BTN_REPEAT_CYCLES)
+						m_buttons[i].rpt_count++;
+						if (m_buttons[i].rpt_count == BTN_REPEAT_CYCLES)
 						{
 							ESP_LOGI(TAG, "******** Btn %d hold rpt", i);
-							evt_t evt = {.id = buttons[i].id, .type = EVT_BTN_HOLD_RPT};
+							evt_t evt = {.id = m_buttons[i].id, .type = EVT_BTN_HOLD_RPT};
 							xQueueSend(m_evt_queue, &evt, 0);
-							buttons[i].rpt_count = 0;
+							m_buttons[i].rpt_count = 0;
 						}
 					}
 				}
 				else
 				{
-					if ((buttons[i].state == BTN_STATE_DOWN) && (ms > BTN_SHORT_PRESS_MS))
+					if ((m_buttons[i].state == BTN_STATE_DOWN) && (ms > BTN_SHORT_PRESS_MS))
 					{
-						buttons[i].state = BTN_STATE_PRESS;
+						m_buttons[i].state = BTN_STATE_PRESS;
 						ESP_LOGI(TAG, "********** Btn %d rls %lu", i, ms);
-						evt_t evt = {.id = buttons[i].id, .type = EVT_BTN_PRESS};
+						evt_t evt = {.id = m_buttons[i].id, .type = EVT_BTN_PRESS};
 						xQueueSend(m_evt_queue, &evt, 0);
 					}
-					buttons[i].state = BTN_STATE_UP;
+					m_buttons[i].state = BTN_STATE_UP;
 				}
 			}
 			else
 			{
-				buttons[i].state = BTN_STATE_MAX_HOLD;
+				m_buttons[i].state = BTN_STATE_MAX_HOLD;
 				if (newState[i])
 				{
-					buttons[i].state = BTN_STATE_UP;
+					m_buttons[i].state = BTN_STATE_UP;
 				}
 			}
 		}

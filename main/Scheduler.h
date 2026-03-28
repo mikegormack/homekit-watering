@@ -13,9 +13,12 @@ public:
     Scheduler();
     ~Scheduler();
 
-    // Register a scheduled event. hour/min are pointers — read at check time,
+    struct SchedTime { uint8_t hour; uint8_t min; };
+    using TimeGetter = std::function<SchedTime()>;
+
+    // Register a scheduled event. get_time is called at check time,
     // so UI changes to the schedule are picked up automatically.
-    void addEvent(const uint8_t *hour, const uint8_t *min, Callback cb);
+    void addEvent(TimeGetter get_time, Callback cb);
 
     // Start the periodic check timer (call after all events are registered)
     void start();
@@ -23,10 +26,9 @@ public:
 private:
     struct Event
     {
-        const uint8_t *hour;
-        const uint8_t *min;
-        Callback        cb;
-        int             last_fired_min = -1;
+        TimeGetter get_time;
+        Callback   cb;
+        int        last_fired_min = -1;
     };
 
     std::vector<Event> m_events;

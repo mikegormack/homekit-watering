@@ -1,6 +1,8 @@
 #pragma once
 
 #include <driver/i2c_master.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <functional>
 
@@ -97,6 +99,7 @@ public:
 	 */
 	bool setGPIO(uint16_t gpio);
 	bool getGPIO(uint16_t* gpio);
+	bool getOLAT(uint16_t* olat);
 
 	bool setPullUp(uint16_t gpio);
 	bool getPullUp(uint16_t* gpio);
@@ -130,7 +133,8 @@ private:
 	} m_inta_ctx, m_intb_ctx;
 	bool m_int_mirror;
 
-	QueueHandle_t m_int_evt_queue = NULL;
+	QueueHandle_t m_int_evt_queue = nullptr;
+	TaskHandle_t  m_int_task      = nullptr;
 
 	std::function<void(uint16_t, uint16_t, void*)> m_callback = nullptr;
 	void* m_user_data;

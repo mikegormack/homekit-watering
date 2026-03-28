@@ -1,27 +1,26 @@
 
-#include <nvs_flash.h>
-#include <nvs.h>
-
 #include <SSD1306I2C.h>
 #include <icons.h>
 #include <iocfg.h>
 
-#include <esp_log.h>
-
 #include <MoistThrScreen.h>
-
-//static const char *TAG = "MoistThrScreen";
 
 MoistThrScreen::MoistThrScreen(SSD1306I2C& display, uint32_t timeout_tick, MenuCtx& ctx)
     : Screen(display, timeout_tick),
       m_menu_ctx(ctx),
       m_blank(false),
-      m_val(ctx.moist_threshold)
+      m_val(ctx.moisture.thr_getter ? ctx.moisture.thr_getter() : 50)
 {
 }
 
 MoistThrScreen::~MoistThrScreen()
 {
+}
+
+void MoistThrScreen::open()
+{
+	m_val = m_menu_ctx.moisture.thr_getter ? m_menu_ctx.moisture.thr_getter() : 50;
+	Screen::open();
 }
 
 void MoistThrScreen::update()
@@ -45,7 +44,7 @@ void MoistThrScreen::update()
 		m_display.drawString(0, 0, "Cur:");
 
 		// Live moisture reading as the bar fill
-		uint8_t moisture = m_menu_ctx.moist_getter ? m_menu_ctx.moist_getter() : 0;
+		uint8_t moisture = m_menu_ctx.moisture.getter ? m_menu_ctx.moisture.getter() : 0;
 		m_display.drawProgressBar(14, 16, 100, 8, moisture);
 
 		// Threshold marker (blinks)
@@ -66,14 +65,8 @@ void MoistThrScreen::receiveEvent(evt_t *evt)
 	{
 		if (evt->type == EVT_BTN_HOLD)
 		{
-			m_menu_ctx.moist_threshold = m_val;
-			nvs_handle_t h;
-			if (nvs_open("storage", NVS_READWRITE, &h) == ESP_OK)
-			{
-				nvs_set_u8(h, "moist_thr", m_val);
-				nvs_commit(h);
-				nvs_close(h);
-			}
+			if (m_menu_ctx.moisture.thr_setter)
+				m_menu_ctx.moisture.thr_setter(m_val);
 			m_closed = true;
 		}
 	}

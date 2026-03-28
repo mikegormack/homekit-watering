@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <memory>
+#include <utility>
 
 typedef enum
 {
@@ -41,8 +42,7 @@ private:
 	std::vector<menu_item> m_menu_wifi;
 
 	const std::vector<menu_item>* m_cur_menu;
-	std::vector<const std::vector<menu_item>*> m_menu_stack;
-	std::vector<uint8_t> m_ind_stack;
+	std::vector<std::pair<const std::vector<menu_item>*, uint8_t>> m_nav_stack;
 	Screen* m_scr;
 
 	void createMenu(void);

@@ -4,6 +4,7 @@
 #include <esp_log.h>
 #include <esp_ota_ops.h>
 #include <esp_timer.h>
+#include <esp_app_format.h>
 
 static const char *TAG = "OtaServer";
 
@@ -24,11 +25,13 @@ static const char *INDEX_HTML = R"html(<!DOCTYPE html>
 </head>
 <body>
   <h1>Firmware Update</h1>
+  <div id="version" style="margin-bottom:12px;color:#555;font-size:0.9em;"></div>
   <input type="file" id="file" accept=".bin">
   <button id="btn" onclick="upload()">Upload &amp; Update</button>
   <progress id="progress" max="100" value="0"></progress>
   <div id="status"></div>
   <script>
+    fetch('/version').then(r => r.text()).then(v => { document.getElementById('version').innerText = 'Current firmware: ' + v; });
     function upload() {
       const file = document.getElementById('file').files[0];
       if (!file) { document.getElementById('status').innerText = 'Select a .bin file first.'; return; }
@@ -65,49 +68,36 @@ static const char *INDEX_HTML = R"html(<!DOCTYPE html>
 
 // ---------------------------------------------------------------------------
 
-void OtaServer::start()
+void OtaServer::start(httpd_handle_t server)
 {
-    httpd_config_t config      = HTTPD_DEFAULT_CONFIG();
-    config.server_port         = 8080;
-    config.max_open_sockets    = 3;
-    config.stack_size          = 8192;
-    config.recv_wait_timeout   = 30;  // seconds — firmware uploads are large
+    m_server = server;
 
-    if (httpd_start(&m_server, &config) != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to start HTTP server");
-        return;
-    }
-
-    httpd_uri_t index_uri = {
-        .uri     = "/",
-        .method  = HTTP_GET,
-        .handler = index_handler,
-        .user_ctx = nullptr,
+    httpd_uri_t uris[] = {
+        { "/update",  HTTP_GET,  index_handler,   nullptr },
+        { "/update",  HTTP_POST, update_handler,  nullptr },
+        { "/version", HTTP_GET,  version_handler, nullptr },
     };
-    httpd_register_uri_handler(m_server, &index_uri);
+    for (auto &u : uris)
+        httpd_register_uri_handler(m_server, &u);
 
-    httpd_uri_t update_uri = {
-        .uri     = "/update",
-        .method  = HTTP_POST,
-        .handler = update_handler,
-        .user_ctx = nullptr,
-    };
-    httpd_register_uri_handler(m_server, &update_uri);
-
-    ESP_LOGI(TAG, "OTA server started");
+    ESP_LOGI(TAG, "OTA handlers registered");
 }
 
 void OtaServer::stop()
 {
-    if (m_server)
-    {
-        httpd_stop(m_server);
-        m_server = nullptr;
-    }
+    // handlers are deregistered when the shared httpd stops
+    m_server = nullptr;
 }
 
 // ---------------------------------------------------------------------------
+
+esp_err_t OtaServer::version_handler(httpd_req_t *req)
+{
+    const esp_app_desc_t *desc = esp_app_get_description();
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_sendstr(req, desc->version);
+    return ESP_OK;
+}
 
 esp_err_t OtaServer::index_handler(httpd_req_t *req)
 {
@@ -137,7 +127,7 @@ esp_err_t OtaServer::update_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    static char buf[4096];
+    char buf[4096];
     int remaining = req->content_len;
 
     while (remaining > 0)

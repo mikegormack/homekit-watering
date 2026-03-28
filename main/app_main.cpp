@@ -55,13 +55,14 @@ extern const char* timezone_posix(int idx); // defined in TimezoneScreen.cpp
 #include "ValveChannel.h"
 #include "Scheduler.h"
 #include "OtaServer.h"
+#include "ControlServer.h"
+#include "WebBase.h"
+// WebBase owns the httpd instance; OtaServer and ControlServer register onto it
 #include <MoistInput.h>
 #include <UI.h>
 
 #include <SSD1306I2C.h>
 #include <MCP23017.h>
-
-#include <app_wifi_handler.h>
 
 #include <iocfg.h>
 
@@ -70,7 +71,9 @@ char server_cert[] = {};
 
 static std::unique_ptr<ValveChannel> s_valves[2];
 static Scheduler                     s_sched;
+static WebBase                       s_web_base;
 static OtaServer                     s_ota_server;
+static ControlServer                 s_ctrl_server;
 
 static std::unique_ptr<SSD1306I2C> disp_p;
 static std::unique_ptr<UI>         ui_p;
@@ -86,44 +89,16 @@ static const char* TAG = "HAP Sprinkler";
 #define SPRINKLER_TASK_STACKSIZE 4 * 1024
 #define SPRINKLER_TASK_NAME      "hap_sprinkler"
 
-/* Reset network credentials if button is pressed for more than 3 seconds and then released */
-#define RESET_NETWORK_BUTTON_TIMEOUT 3
-
-/* Reset to factory if button is pressed and held for more than 10 seconds */
-#define RESET_TO_FACTORY_BUTTON_TIMEOUT 10
-
 /* The button "Boot" will be used as the Reset button for the example */
 #define RESET_GPIO GPIO_NUM_0
 
 #define IO_RES_PIN 25
 #define IO_INT_PIN 26
 
-/**
- * @brief The network reset button callback handler.
- * Useful for testing the Wi-Fi re-configuration feature of WAC2
- */
-static void reset_network_handler(void* arg)
-{
-	hap_reset_network();
-}
-/**
- * @brief The factory reset button callback handler.
- */
-static void reset_to_factory_handler(void* arg)
-{
-	hap_reset_to_factory();
-}
-
-/**
- * The Reset button  GPIO initialisation function.
- * Same button will be used for resetting Wi-Fi network as well as for reset to factory based on
- * the time for which the button is pressed.
- */
+// Placeholder: button-triggered network/factory reset not yet implemented
 static void reset_key_init(uint32_t key_gpio_pin)
 {
-	/*button_handle_t handle = iot_button_create((gpio_num_t)key_gpio_pin, BUTTON_ACTIVE_LOW);
-	iot_button_add_on_release_cb(handle, RESET_NETWORK_BUTTON_TIMEOUT, reset_network_handler, NULL);
-	iot_button_add_on_press_cb(handle, RESET_TO_FACTORY_BUTTON_TIMEOUT, reset_to_factory_handler, NULL);*/
+	(void)key_gpio_pin;
 }
 
 /* Mandatory identify routine for the accessory.
@@ -171,7 +146,7 @@ static void sprinkler_hap_event_handler(void* arg, esp_event_base_t event_base, 
 		break;
 		case HAP_EVENT_PAIRING_MODE_TIMED_OUT:
 			ESP_LOGI(TAG, "Pairing Mode timed out.");
-			menu_ctx.hap_pairing_timed_out = true;
+			menu_ctx.hap.pairing_timed_out = true;
 			break;
 		default:
 			/* Silently ignore unknown events */
@@ -184,7 +159,8 @@ static bool ioexp_init(i2c_master_bus_handle_t i2c_port)
 	ioexp_p = std::make_shared<MCP23017>(i2c_port, MCP23017_BASE_ADDRESS, IO_RES_PIN, IO_INT_PIN, -1, true);
 	if (ioexp_p->init() == false)
 		return false;
-	uint16_t input_cfg = (BTN_SEL_IOEXP_MASK | BTN_BACK_IOEXP_MASK | BTN_UP_IOEXP_MASK | BTN_DN_IOEXP_MASK);
+	uint16_t input_cfg = (BTN_SEL_IOEXP_MASK | BTN_BACK_IOEXP_MASK | BTN_UP_IOEXP_MASK | BTN_DN_IOEXP_MASK |
+	                      BTN_CH1_IOEXP_MASK | BTN_CH2_IOEXP_MASK);
 	ESP_LOGI(TAG, "ioexp init ok");
 	if (ioexp_p->setIODIR(input_cfg) == false)
 		return false;
@@ -230,15 +206,12 @@ static void sprinkler_thread_entry(void* p)
 	menu_ctx.out_ch[0] = s_valves[0].get();
 	menu_ctx.out_ch[1] = s_valves[1].get();
 
-	// Load saved timezone index and moisture threshold, apply before WiFi/NTP starts
+	// Load saved timezone index, apply before WiFi/NTP starts
 	{
 		nvs_handle_t h;
 		if (nvs_open("storage", NVS_READONLY, &h) == ESP_OK)
 		{
 			nvs_get_i32(h, "tz_idx", &s_tz_idx);
-			uint8_t thr = 50;
-			nvs_get_u8(h, "moist_thr", &thr);
-			menu_ctx.moist_threshold = thr;
 			nvs_close(h);
 		}
 		setenv("TZ", timezone_posix((int)s_tz_idx), 1);
@@ -274,26 +247,26 @@ static void sprinkler_thread_entry(void* p)
 	    {
 		    if (!ioexp_p)
 			    return;
-		    uint16_t gpio = 0;
-		    ioexp_p->getGPIO(&gpio);
+		    uint16_t latch = 0;
+		    ioexp_p->getOLAT(&latch);
 		    if (on)
-			    gpio |= VALVE_CH0_IOEXP_MASK;
+			    latch |= VALVE_CH0_IOEXP_MASK;
 		    else
-			    gpio &= ~VALVE_CH0_IOEXP_MASK;
-		    ioexp_p->setGPIO(gpio);
+			    latch &= ~VALVE_CH0_IOEXP_MASK;
+		    ioexp_p->setGPIO(latch);
 	    });
 	s_valves[1]->setOutputFn(
 	    [](bool on)
 	    {
 		    if (!ioexp_p)
 			    return;
-		    uint16_t gpio = 0;
-		    ioexp_p->getGPIO(&gpio);
+		    uint16_t latch = 0;
+		    ioexp_p->getOLAT(&latch);
 		    if (on)
-			    gpio |= VALVE_CH1_IOEXP_MASK;
+			    latch |= VALVE_CH1_IOEXP_MASK;
 		    else
-			    gpio &= ~VALVE_CH1_IOEXP_MASK;
-		    ioexp_p->setGPIO(gpio);
+			    latch &= ~VALVE_CH1_IOEXP_MASK;
+		    ioexp_p->setGPIO(latch);
 	    });
 	disp_p = std::make_unique<SSD1306I2C>(0x3C, bus_handle, GEOMETRY_128_64);
 	if (disp_p->init())
@@ -303,6 +276,7 @@ static void sprinkler_thread_entry(void* p)
 		disp_p->setLogBuffer(5, 30);
 		ui_p = std::make_unique<UI>(*disp_p, ioexp_p, menu_ctx);
 		moisture_p = std::make_unique<MoistInput>(MOISTURE_ADC_UNIT, MOISTURE_ADC_CHANNEL);
+		moisture_p->load();
 	}
 
 	hap_acc_t* accessory;
@@ -344,11 +318,11 @@ static void sprinkler_thread_entry(void* p)
 
 	/* Wire moisture getter, threshold, and scheduler into valve channels, then create HAP services */
 	s_valves[0]->setMoistureGetter([&]() -> float { return moisture_p ? (float)moisture_p->getMoisture() : 0.0f; });
-	s_valves[0]->setMoistureThreshold(&menu_ctx.moist_threshold);
+	s_valves[0]->setMoistureThreshold([&]() -> uint8_t { return moisture_p ? moisture_p->getThreshold() : 50; });
 	s_valves[0]->registerWithScheduler(s_sched);
 	hap_acc_add_serv(accessory, s_valves[0]->createService());
 
-	s_valves[1]->setMoistureThreshold(&menu_ctx.moist_threshold);
+	s_valves[1]->setMoistureThreshold([&]() -> uint8_t { return moisture_p ? moisture_p->getThreshold() : 50; });
 	s_valves[1]->registerWithScheduler(s_sched);
 	hap_acc_add_serv(accessory, s_valves[1]->createService());
 
@@ -397,7 +371,7 @@ static void sprinkler_thread_entry(void* p)
 		char* uri = esp_hap_get_setup_payload(CONFIG_EXAMPLE_SETUP_CODE, CONFIG_EXAMPLE_SETUP_ID, true, cfg.cid);
 		if (uri)
 		{
-			menu_ctx.hap_setup_uri = uri;
+			menu_ctx.hap.setup_uri = uri;
 			free(uri);
 		}
 	}
@@ -407,7 +381,7 @@ static void sprinkler_thread_entry(void* p)
 		char* uri = esp_hap_get_setup_payload(CONFIG_EXAMPLE_SETUP_CODE, CONFIG_EXAMPLE_SETUP_ID, false, cfg.cid);
 		if (uri)
 		{
-			menu_ctx.hap_setup_uri = uri;
+			menu_ctx.hap.setup_uri = uri;
 			free(uri);
 		}
 	}
@@ -420,13 +394,36 @@ static void sprinkler_thread_entry(void* p)
 	/* Initialize Wi-Fi */
 	app_wifi_handler_init();
 
-	/* Start OTA web server (browse to device IP to upload firmware) */
-	s_ota_server.start();
+	/* Start shared HTTP server then register OTA and control handlers */
+	s_web_base.start();
+	s_ota_server.start(s_web_base.getHandle());
+
+	/* Start control web server (port 8081) */
+	s_ctrl_server.valve_status = [](int ch) -> ControlServer::ValveStatus
+	{
+		if (!s_valves[ch]) return {false, 0};
+		return {s_valves[ch]->isActive(), s_valves[ch]->getRemaining()};
+	};
+	s_ctrl_server.valve_run  = [](int ch, uint32_t dur_s) { if (s_valves[ch]) s_valves[ch]->manualRun(dur_s); };
+	s_ctrl_server.valve_stop = [](int ch)                 { if (s_valves[ch]) s_valves[ch]->manualStop(); };
+	s_ctrl_server.moisture   = [&]() -> uint8_t { return moisture_p ? moisture_p->getMoisture() : 0; };
+	s_ctrl_server.sched_get  = [](int ch) -> const time_evt_t *
+	{
+		return s_valves[ch] ? s_valves[ch]->getEvents() : nullptr;
+	};
+	s_ctrl_server.sched_set  = [](int ch, const time_evt_t *evts)
+	{
+		if (!s_valves[ch]) return;
+		for (int i = 0; i < EVT_PER_CH; i++)
+			s_valves[ch]->setEvent(i, evts[i]);
+		s_valves[ch]->save(); // scheduler already holds pointers into m_evt, no re-register needed
+	};
+	s_ctrl_server.start(s_web_base.getHandle());
 
 	/* Wire wifi callbacks into menu context for WifiProvScreen */
-	menu_ctx.start_prov = []() { return wifi_handler_start_provisioning(); };
-	menu_ctx.stop_prov = []() { wifi_handler_stop_provisioning(); };
-	menu_ctx.prov_status = []() -> MenuCtx::ProvStatus
+	menu_ctx.wifi.start_prov = []() { return wifi_handler_start_provisioning(); };
+	menu_ctx.wifi.stop_prov = []() { wifi_handler_stop_provisioning(); };
+	menu_ctx.wifi.prov_status = []() -> MenuCtx::ProvStatus
 	{
 		if (wifi_handler_prov_failed())
 			return MenuCtx::ProvStatus::Failed;
@@ -434,20 +431,20 @@ static void sprinkler_thread_entry(void* p)
 			return MenuCtx::ProvStatus::Connected;
 		return MenuCtx::ProvStatus::InProgress;
 	};
-	menu_ctx.wifi_info = []() -> MenuCtx::WifiInfo
+	menu_ctx.wifi.wifi_info = []() -> MenuCtx::WifiInfo
 	{
 		MenuCtx::WifiInfo info{};
 		wifi_handler_get_info(info.ssid, sizeof(info.ssid), info.ip, sizeof(info.ip), &info.connected);
 		return info;
 	};
-	menu_ctx.rssi_getter = []() -> int8_t
+	menu_ctx.wifi.rssi_getter = []() -> int8_t
 	{
 		wifi_ap_record_t ap_info;
 		int8_t           rssi = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) ? ap_info.rssi : 0;
 		ESP_LOGI(TAG, "rssi %d", rssi);
 		return rssi;
 	};
-	menu_ctx.tz_getter = []() -> int
+	menu_ctx.settings.tz_getter = []() -> int
 	{
 		nvs_handle_t h;
 		int32_t      idx = 0;
@@ -458,18 +455,30 @@ static void sprinkler_thread_entry(void* p)
 		}
 		return (int)idx;
 	};
-	menu_ctx.moist_getter = [&]() -> uint8_t { return moisture_p ? moisture_p->getMoisture() : 0; };
-	menu_ctx.ch_active = [](int ch) -> bool { return s_valves[ch] ? s_valves[ch]->isActive() : false; };
-	menu_ctx.ch_remaining = [](int ch) -> uint32_t { return s_valves[ch] ? s_valves[ch]->getRemaining() : 0; };
-	menu_ctx.hap_is_paired = []() -> bool { return hap_get_paired_controller_count() > 0; };
-	menu_ctx.hap_reopen_pairing = []()
+	menu_ctx.moisture.getter     = [&]() -> uint8_t { return moisture_p ? moisture_p->getMoisture() : 0; };
+	menu_ctx.moisture.raw_getter = [&]() -> int      { return moisture_p ? moisture_p->getAvgRaw()    : -1; };
+	menu_ctx.moisture.cal_setter = [&](int dry, int wet) { if (moisture_p) moisture_p->setCal(dry, wet); };
+	menu_ctx.moisture.thr_getter = [&]() -> uint8_t  { return moisture_p ? moisture_p->getThreshold() : 50; };
+	menu_ctx.moisture.thr_setter = [&](uint8_t val)  { if (moisture_p) moisture_p->setThreshold(val); };
+	menu_ctx.valves.active = [](int ch) -> bool { return s_valves[ch] ? s_valves[ch]->isActive() : false; };
+	menu_ctx.valves.toggle = [](int ch, uint32_t dur_s)
+	{
+		if (!s_valves[ch]) return;
+		if (s_valves[ch]->isActive())
+			s_valves[ch]->manualStop();
+		else
+			s_valves[ch]->manualRun(dur_s);
+	};
+	menu_ctx.valves.remaining = [](int ch) -> uint32_t { return s_valves[ch] ? s_valves[ch]->getRemaining() : 0; };
+	menu_ctx.hap.is_paired = []() -> bool { return hap_get_paired_controller_count() > 0; };
+	menu_ctx.hap.reopen_pairing = []()
 	{
 		ESP_LOGI(TAG, "Reopening HAP pairing window");
-		menu_ctx.hap_pairing_timed_out = false;
+		menu_ctx.hap.pairing_timed_out = false;
 		hap_pair_setup_re_enable();
 	};
-	menu_ctx.hap_reset_pairings = []() { hap_reset_pairings(); };
-	menu_ctx.tz_setter = [](int idx)
+	menu_ctx.hap.reset_pairings = []() { hap_reset_pairings(); };
+	menu_ctx.settings.tz_setter = [](int idx)
 	{
 		setenv("TZ", timezone_posix(idx), 1);
 		tzset();

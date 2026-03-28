@@ -1,7 +1,6 @@
 
 #include <ctime>
-#include <sstream>
-#include <iomanip>
+#include <stdio.h>
 
 #include <HomeScreen.h>
 
@@ -40,9 +39,9 @@ void HomeScreen::update()
 
 		m_display.drawBitmap(112, 0, tool_icon16x16, 16, 16);
 
-		uint8_t moisture = m_menu_ctx.moist_getter ? m_menu_ctx.moist_getter() : 0;
-		m_display.drawBitmap(13, 44, moisture_icon16x16, 16, 16);
-		m_display.drawProgressBar(30, 48, 30, 6, moisture);
+		uint8_t moisture = m_menu_ctx.moisture.getter ? m_menu_ctx.moisture.getter() : 0;
+		m_display.drawBitmap(40, 44, moisture_icon16x16, 16, 16);
+		m_display.drawProgressBar(58, 48, 30, 6, moisture);
 
 		update_clock();
 		show_wifi();
@@ -64,43 +63,25 @@ void HomeScreen::update_clock()
 {
 	std::time_t now;
 	std::time(&now);
-	std::tm *local = std::localtime(&now);
-
+	std::tm local_tm;
+	std::tm *local = localtime_r(&now, &local_tm);
 	m_display.setFont(ArialMT_Plain_10);
 
 	// Show placeholder until NTP has set the clock (year 1970 = not synced)
 	if (local->tm_year < 120) // tm_year: years since 1900; 120 = 2020
 	{
-		m_display.drawString(40, 0, "--");
-		m_display.drawString(53, 0, ":");
-		m_display.drawString(58, 0, "--");
-		m_display.drawString(71, 0, ":");
-		m_display.drawString(76, 0, "--");
+		m_display.drawString(40, 0, "--:--:--");
 		return;
 	}
 
-	std::stringstream ss;
-	ss << std::setw(2) << std::setfill('0') << +local->tm_hour;
-	m_display.drawString(40, 0, ss.str());
-	m_display.drawString(53, 0, ":");
-
-	ss.clear();
-	ss.str("");
-
-	ss << std::setw(2) << std::setfill('0') << +local->tm_min;
-	m_display.drawString(58, 0, ss.str());
-	m_display.drawString(71, 0, ":");
-
-	ss.clear();
-	ss.str("");
-
-	ss << std::setw(2) << std::setfill('0') << +local->tm_sec;
-	m_display.drawString(76, 0, ss.str());
+	char buf[9];
+	snprintf(buf, sizeof(buf), "%02d:%02d:%02d", local->tm_hour, local->tm_min, local->tm_sec);
+	m_display.drawString(40, 0, buf);
 }
 
 void HomeScreen::show_wifi()
 {
-	int8_t rssi = m_menu_ctx.rssi_getter ? m_menu_ctx.rssi_getter() : 0;
+	int8_t rssi = m_menu_ctx.wifi.rssi_getter ? m_menu_ctx.wifi.rssi_getter() : 0;
 
 	m_display.drawBitmap(0, 0, wifi1_icon16x16, 16, 16);
 
@@ -128,8 +109,8 @@ void HomeScreen::show_wifi()
 
 void HomeScreen::show_channel()
 {
-	bool     active    = m_menu_ctx.ch_active    ? m_menu_ctx.ch_active(m_channel)    : false;
-	uint32_t remaining = m_menu_ctx.ch_remaining ? m_menu_ctx.ch_remaining(m_channel) : 0;
+	bool     active    = m_menu_ctx.valves.active    ? m_menu_ctx.valves.active(m_channel)    : false;
+	uint32_t remaining = m_menu_ctx.valves.remaining ? m_menu_ctx.valves.remaining(m_channel) : 0;
 
 	// Tap icon + channel number, vertically centred in middle band (y=16..47)
 	m_display.drawBitmap(2, 24, water_tap_icon16x16, 16, 16);
@@ -142,10 +123,7 @@ void HomeScreen::show_channel()
 
 	// Clock icon + remaining time MM:SS
 	m_display.drawBitmap(65, 24, clock_icon16x16, 16, 16);
-	uint32_t mins = remaining / 60;
-	uint32_t secs = remaining % 60;
-	std::stringstream ss;
-	ss << std::setw(2) << std::setfill('0') << mins << ":"
-	   << std::setw(2) << std::setfill('0') << secs;
-	m_display.drawString(83, 24, ss.str());
+	char buf[12];
+	snprintf(buf, sizeof(buf), "%02lu:%02lu", remaining / 60, remaining % 60);
+	m_display.drawString(83, 24, buf);
 }

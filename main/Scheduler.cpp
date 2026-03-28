@@ -19,9 +19,9 @@ Scheduler::~Scheduler()
     }
 }
 
-void Scheduler::addEvent(const uint8_t *hour, const uint8_t *min, Callback cb)
+void Scheduler::addEvent(TimeGetter get_time, Callback cb)
 {
-    m_events.push_back({hour, min, std::move(cb), -1});
+    m_events.push_back({std::move(get_time), std::move(cb), -1});
 }
 
 void Scheduler::start()
@@ -47,7 +47,8 @@ void Scheduler::check()
 {
     std::time_t now;
     std::time(&now);
-    std::tm *local = std::localtime(&now);
+    std::tm local_tm;
+    std::tm *local = localtime_r(&now, &local_tm);
 
     // Don't fire until NTP has set the clock (year 1970 = not yet synced)
     if (local->tm_year < 120) // tm_year: years since 1900; 120 = 2020
@@ -59,13 +60,14 @@ void Scheduler::check()
 
     for (auto &ev : m_events)
     {
-        if (*ev.hour != (uint8_t)local->tm_hour || *ev.min != (uint8_t)local->tm_min)
+        SchedTime t = ev.get_time();
+        if (t.hour != (uint8_t)local->tm_hour || t.min != (uint8_t)local->tm_min)
             continue;
         if (ev.last_fired_min == local->tm_min)
             continue; // already fired this minute
 
         ev.last_fired_min = local->tm_min;
-        ESP_LOGI(TAG, "Firing event at %02d:%02d", *ev.hour, *ev.min);
+        ESP_LOGI(TAG, "Firing event at %02d:%02d", t.hour, t.min);
         ev.cb();
     }
 }

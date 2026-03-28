@@ -6,6 +6,8 @@
 #include <hap_apple_servs.h>
 #include <hap_apple_chars.h>
 #include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include <OutputChannel.h>
 
@@ -14,8 +16,9 @@ class Scheduler;
 class ValveChannel : public OutputChannel
 {
 public:
-    using MoistureFn = std::function<float()>;
-    using OutputFn   = std::function<void(bool)>; // true = on, false = off
+    using MoistureFn    = std::function<float()>;
+    using MoistThrFn    = std::function<uint8_t()>;
+    using OutputFn      = std::function<void(bool)>; // true = on, false = off
 
     // hap_name: shown in Home app; nvs_key: used for NVS schedule persistence
     ValveChannel(int ch_num, const char *hap_name, const char *nvs_key,
@@ -23,7 +26,7 @@ public:
     ~ValveChannel();
 
     void setMoistureGetter(MoistureFn fn)    { m_moisture_fn = fn; }
-    void setMoistureThreshold(uint8_t *thr)  { m_moist_threshold = thr; }
+    void setMoistureThreshold(MoistThrFn fn) { m_moist_threshold_fn = fn; }
     void setOutputFn(OutputFn fn)            { m_output_fn = fn; }
 
     // Register the two scheduled events (from OutputChannel::m_evt) with a Scheduler
@@ -38,17 +41,22 @@ public:
     // Called by Scheduler when a scheduled event fires
     void scheduledActivate(uint32_t duration_s);
 
+    // Manual button control
+    void manualRun(uint32_t duration_s);
+    void manualStop();
+
 private:
     int                m_ch_num;
     const char        *m_hap_name;
     uint32_t           m_set_duration;
     hap_serv_t        *m_service;
-    volatile bool      m_active;
-    volatile uint32_t  m_remaining;
+    bool               m_active;
+    uint32_t           m_remaining;
     esp_timer_handle_t m_timer;
+    SemaphoreHandle_t  m_mutex;
     MoistureFn         m_moisture_fn;
     OutputFn           m_output_fn;
-    uint8_t           *m_moist_threshold = nullptr;
+    MoistThrFn         m_moist_threshold_fn;
 
     void onActivate(uint32_t duration_s);
     void onDeactivate();

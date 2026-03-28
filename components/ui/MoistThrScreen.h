@@ -9,6 +9,7 @@ public:
 	MoistThrScreen(SSD1306I2C& display, uint32_t timeout_tick, MenuCtx& ctx);
 	~MoistThrScreen();
 
+	void open() override;
 	void update() override;
 	void receiveEvent(evt_t *evt) override;
 

@@ -16,7 +16,8 @@ ValveChannel::ValveChannel(int ch_num, const char *hap_name, const char *nvs_key
       m_service(nullptr),
       m_active(false),
       m_remaining(0),
-      m_timer(nullptr)
+      m_timer(nullptr),
+      m_mutex(xSemaphoreCreateMutex())
 {
 }
 
@@ -27,6 +28,8 @@ ValveChannel::~ValveChannel()
         esp_timer_stop(m_timer);
         esp_timer_delete(m_timer);
     }
+    if (m_mutex)
+        vSemaphoreDelete(m_mutex);
 }
 
 hap_serv_t *ValveChannel::createService()
@@ -60,9 +63,10 @@ void ValveChannel::registerWithScheduler(Scheduler &sched)
 {
     for (int i = 0; i < EVT_PER_CH; i++)
     {
-        sched.addEvent(&m_evt[i].hour, &m_evt[i].min, [this, i]() {
-            scheduledActivate((uint32_t)m_evt[i].duration * 60);
-        });
+        sched.addEvent(
+            [this, i]() { return Scheduler::SchedTime{getEvents()[i].hour, getEvents()[i].min}; },
+            [this, i]() { scheduledActivate((uint32_t)getEvents()[i].duration * 60); }
+        );
     }
     ESP_LOGI(TAG, "CH%d registered %d schedule events", m_ch_num, EVT_PER_CH);
 }
@@ -76,21 +80,35 @@ void ValveChannel::scheduledActivate(uint32_t duration_s)
         ESP_LOGI(TAG, "CH%d skip schedule: duration is 0", m_ch_num);
         return;
     }
-    if (m_moist_threshold && m_moisture_fn)
+    if (m_moist_threshold_fn && m_moisture_fn)
     {
-        float moisture = m_moisture_fn();
-        if (moisture >= (float)*m_moist_threshold)
+        float   moisture = m_moisture_fn();
+        uint8_t thr      = m_moist_threshold_fn();
+        if (moisture >= (float)thr)
         {
             ESP_LOGI(TAG, "CH%d skip schedule: moisture %.1f >= threshold %d",
-                     m_ch_num, moisture, (int)*m_moist_threshold);
+                     m_ch_num, moisture, (int)thr);
             return;
         }
     }
     onActivate(duration_s);
 }
 
+void ValveChannel::manualRun(uint32_t duration_s)
+{
+    ESP_LOGI(TAG, "CH%d manual run %lus", m_ch_num, (unsigned long)duration_s);
+    onActivate(duration_s);
+}
+
+void ValveChannel::manualStop()
+{
+    ESP_LOGI(TAG, "CH%d manual stop", m_ch_num);
+    onDeactivate();
+}
+
 void ValveChannel::onActivate(uint32_t duration_s)
 {
+    xSemaphoreTake(m_mutex, portMAX_DELAY);
     m_active    = true;
     m_remaining = duration_s;
 
@@ -115,10 +133,12 @@ void ValveChannel::onActivate(uint32_t duration_s)
     }
 
     ESP_LOGI(TAG, "CH%d activated (%lus)", m_ch_num, (unsigned long)duration_s);
+    xSemaphoreGive(m_mutex);
 }
 
 void ValveChannel::onDeactivate()
 {
+    xSemaphoreTake(m_mutex, portMAX_DELAY);
     esp_timer_stop(m_timer);
     m_active    = false;
     m_remaining = 0;
@@ -136,11 +156,14 @@ void ValveChannel::onDeactivate()
     hap_char_update_val(rem_dur_c, &val);
 
     ESP_LOGI(TAG, "CH%d deactivated", m_ch_num);
+    xSemaphoreGive(m_mutex);
 }
 
 void ValveChannel::timer_cb(void *arg)
 {
     ValveChannel *self = static_cast<ValveChannel *>(arg);
+
+    xSemaphoreTake(self->m_mutex, portMAX_DELAY);
 
     if (self->m_remaining > 0)
         self->m_remaining = self->m_remaining - 1;
@@ -166,6 +189,8 @@ void ValveChannel::timer_cb(void *arg)
 
         ESP_LOGI(TAG, "CH%d run complete", self->m_ch_num);
     }
+
+    xSemaphoreGive(self->m_mutex);
 }
 
 int ValveChannel::hap_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_priv, void *read_priv)

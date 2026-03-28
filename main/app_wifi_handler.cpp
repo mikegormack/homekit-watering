@@ -374,13 +374,6 @@ esp_err_t app_wifi_handler_start(TickType_t ticks_to_wait)
 }
 #endif
 
-#ifdef CONFIG_APP_WIFI_USE_PROVISIONING
-static void wifi_init_sta()
-{
-	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-	ESP_ERROR_CHECK(esp_wifi_start());
-}
-#endif
 
 bool wifi_handler_is_prov_active(void)
 {

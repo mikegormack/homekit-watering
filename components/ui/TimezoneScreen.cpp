@@ -40,7 +40,7 @@ const char *timezone_posix(int idx)
 TimezoneScreen::TimezoneScreen(SSD1306I2C &display, uint32_t timeout_tick, MenuCtx &menu_ctx)
     : Screen(display, timeout_tick), m_menu_ctx(menu_ctx)
 {
-	m_sel = m_menu_ctx.tz_getter ? m_menu_ctx.tz_getter() : 0;
+	m_sel = m_menu_ctx.settings.tz_getter ? m_menu_ctx.settings.tz_getter() : 0;
 	if (m_sel < 0 || m_sel >= k_tz_count)
 		m_sel = 0;
 }
@@ -83,8 +83,8 @@ void TimezoneScreen::receiveEvent(evt_t *evt)
 {
 	if (evt->id == BTN_SEL_ID && evt->type == EVT_BTN_PRESS)
 	{
-		if (m_menu_ctx.tz_setter)
-			m_menu_ctx.tz_setter(m_sel);
+		if (m_menu_ctx.settings.tz_setter)
+			m_menu_ctx.settings.tz_setter(m_sel);
 		m_closed = true;
 	}
 	else if (evt->id == BTN_BACK_ID && evt->type == EVT_BTN_PRESS)

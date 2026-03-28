@@ -32,9 +32,9 @@ void WifiStatusScreen::update()
     m_display.clear();
     m_display.setColor(WHITE);
 
-    if (m_menu_ctx.wifi_info)
+    if (m_menu_ctx.wifi.wifi_info)
     {
-        auto info = m_menu_ctx.wifi_info();
+        auto info = m_menu_ctx.wifi.wifi_info();
 
         m_display.setFont(ArialMT_Plain_10);
         m_display.drawString(0, 0, "WiFi Status");

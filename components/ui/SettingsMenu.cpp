@@ -1,7 +1,4 @@
 
-#include <sstream>
-#include <iomanip>
-
 #include <SettingsMenu.h>
 #include <EvtTimeScreen.h>
 #include <MoistThrScreen.h>
@@ -10,6 +7,8 @@
 #include <WifiStatusScreen.h>
 #include <HapQrScreen.h>
 #include <HapResetScreen.h>
+#include <InfoScreen.h>
+#include <MoistCalScreen.h>
 
 #include <SSD1306I2C.h>
 #include <icons.h>
@@ -48,9 +47,10 @@ void SettingsMenu::createMenu()
 		m_menu_base.emplace_back(clock_icon16x16, "CH2 Time", nullptr, std::make_unique<EvtTimeScreen>(m_display, m_timeout, *m_menu_ctx.out_ch[1]));
 	}
 	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Thr", nullptr, std::make_unique<MoistThrScreen>(m_display, m_timeout, m_menu_ctx));
+	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Cal", nullptr, std::make_unique<MoistCalScreen>(m_display, m_timeout, m_menu_ctx));
 	m_menu_base.emplace_back(clock_icon16x16, "Timezone", nullptr, std::make_unique<TimezoneScreen>(m_display, m_timeout, m_menu_ctx));
 	m_menu_base.emplace_back(wifi1_icon16x16, "WIFI", &m_menu_wifi, nullptr);
-	m_menu_base.emplace_back(clock_icon16x16, "Info", nullptr, nullptr);
+	m_menu_base.emplace_back(clock_icon16x16, "Info", nullptr, std::make_unique<InfoScreen>(m_display, m_timeout));
 }
 
 void SettingsMenu::update()
@@ -121,8 +121,7 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 			if (m_cur_menu->at(m_sel_item).sub_menu != nullptr)
 			{
 				ESP_LOGI(TAG, "Enter submenu");
-				m_menu_stack.push_back(m_cur_menu);
-				m_ind_stack.push_back(m_sel_item);
+				m_nav_stack.push_back({m_cur_menu, m_sel_item});
 				m_cur_menu = m_cur_menu->at(m_sel_item).sub_menu;
 				m_sel_item = 0;
 			}
@@ -131,7 +130,7 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 				if (m_cur_menu->at(m_sel_item).screen != nullptr)
 				{
 					m_scr = m_cur_menu->at(m_sel_item).screen.get();
-					m_scr->refreshTimeout();
+					m_scr->open();
 				}
 			}
 			refreshTimeout();
@@ -157,12 +156,11 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 		}
 		else if (evt->id == BTN_BACK_ID)
 		{
-			if (m_menu_stack.empty() == false)
+			if (!m_nav_stack.empty())
 			{
-				m_cur_menu = m_menu_stack.back();
-				m_sel_item = m_ind_stack.back();
-				m_menu_stack.pop_back();
-				m_ind_stack.pop_back();
+				m_cur_menu = m_nav_stack.back().first;
+				m_sel_item = m_nav_stack.back().second;
+				m_nav_stack.pop_back();
 				refreshTimeout();
 				m_refresh = true;
 			}

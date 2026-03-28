@@ -19,10 +19,13 @@ public:
 	~OutputChannel();
 
 	void save();
-
 	void load();
 
-	time_evt_t m_evt[EVT_PER_CH];
-	const char* m_name;
+	const time_evt_t* getEvents() const { return m_evt; }
+	void              setEvent(int i, const time_evt_t& evt) { m_evt[i] = evt; }
+	const char*       getName() const { return m_name; }
+
 private:
+	const char* m_name;
+	time_evt_t  m_evt[EVT_PER_CH];
 };

@@ -19,10 +19,10 @@ MCP23017::MCP23017(i2c_master_bus_handle_t i2c_bus, uint8_t address, int res_pin
 																													m_res_pin(res_pin),
 																													m_int_mirror(int_mirror)
 {
-	if (inta_pin < -1 || inta_pin > 39)
+	if (res_pin < -1 || res_pin > 39)
 	{
-		ESP_LOGE(TAG, "invalid inta_pin val %d", inta_pin);
-		inta_pin = -1;
+		ESP_LOGE(TAG, "invalid res_pin val %d", res_pin);
+		res_pin = -1;
 	}
 	if (inta_pin < -1 || inta_pin > 39)
 	{
@@ -64,6 +64,9 @@ MCP23017::MCP23017(i2c_master_bus_handle_t i2c_bus, uint8_t address, int res_pin
 
 MCP23017::~MCP23017()
 {
+	if (m_int_task != nullptr)
+		vTaskDelete(m_int_task);
+
 	if (m_int_evt_queue != nullptr)
 		vQueueDelete(m_int_evt_queue);
 
@@ -72,7 +75,6 @@ MCP23017::~MCP23017()
 	{
 		ESP_LOGE(TAG, "Failed to remove i2c device %d", ret);
 	}
-	// exit task
 }
 
 bool MCP23017::init()
@@ -111,7 +113,7 @@ bool MCP23017::init()
 		}
 		else
 		{
-			BaseType_t result = xTaskCreate(intTask, "mcp23017_task", 4096, this, 10, NULL);
+			BaseType_t result = xTaskCreate(intTask, "mcp23017_task", 4096, this, 10, &m_int_task);
 			if (result == pdFAIL)
 			{
 				ESP_LOGE(TAG, "task alloc fail");
@@ -143,6 +145,7 @@ bool MCP23017::reset()
 	esp_err_t ret = ESP_OK;
 	if (m_res_pin == -1)
 	{
+		return false;
 	}
 
 	gpio_num_t io_res_pin = (gpio_num_t)m_res_pin;
@@ -250,6 +253,11 @@ bool MCP23017::getGPIO(uint16_t *gpio)
 	return readRegister16(MCP23017_GPIOA, gpio);
 }
 
+bool MCP23017::getOLAT(uint16_t *olat)
+{
+	return readRegister16(MCP23017_OLATA, olat);
+}
+
 bool MCP23017::setPullUp(uint16_t gpio)
 {
 	return writeRegister16(MCP23017_GPPUA, gpio);
@@ -326,7 +334,7 @@ bool MCP23017::setIntPinConfig(bool mirror, bool open_drain, bool act_hi)
 		iocon |= IOCON_ODR;
 	if (act_hi)
 		iocon |= IOCON_INTPOL;
-	return writeRegister(MCP23017_IOCONA, 0);
+	return writeRegister(MCP23017_IOCONA, iocon);
 }
 
 bool MCP23017::readRegister(uint8_t reg_addr, uint8_t *val)

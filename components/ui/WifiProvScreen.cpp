@@ -37,8 +37,8 @@ void WifiProvScreen::refreshTimeout()
     m_success_count = 0;
     m_update_count  = 0;
 
-    if (m_menu_ctx.start_prov)
-        m_qr_code = m_menu_ctx.start_prov();
+    if (m_menu_ctx.wifi.start_prov)
+        m_qr_code = m_menu_ctx.wifi.start_prov();
 
     m_state   = m_qr_code ? PROV_STATE_QR : PROV_STATE_ERROR;
     m_refresh = true;
@@ -61,9 +61,9 @@ void WifiProvScreen::update()
 
     if (m_state == PROV_STATE_QR)
     {
-        if (m_menu_ctx.prov_status)
+        if (m_menu_ctx.wifi.prov_status)
         {
-            auto status = m_menu_ctx.prov_status();
+            auto status = m_menu_ctx.wifi.prov_status();
             if (status == MenuCtx::ProvStatus::Connected)
             {
                 ESP_LOGI(TAG, "WiFi connected — provisioning complete");
@@ -129,9 +129,9 @@ void WifiProvScreen::receiveEvent(evt_t* evt)
 void WifiProvScreen::cancel()
 {
     ESP_LOGI(TAG, "Provisioning cancelled");
-    if (m_menu_ctx.stop_prov)
+    if (m_menu_ctx.wifi.stop_prov)
     {
-        m_menu_ctx.stop_prov();
+        m_menu_ctx.wifi.stop_prov();
     }
     m_closed = true;
 }
