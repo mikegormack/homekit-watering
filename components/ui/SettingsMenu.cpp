@@ -136,7 +136,7 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 			refreshTimeout();
 			m_refresh = true;
 		}
-		else if (evt->id == BTN_UP_ID)
+		else if (evt->id == BTN_DN_ID)
 		{
 			if (m_sel_item < (m_cur_menu->size() - 1))
 				m_sel_item++;
@@ -145,7 +145,7 @@ void SettingsMenu::receiveEvent(evt_t *evt)
 			refreshTimeout();
 			m_refresh = true;
 		}
-		else if (evt->id == BTN_DN_ID)
+		else if (evt->id == BTN_UP_ID)
 		{
 			if (m_sel_item > 0)
 				m_sel_item--;
