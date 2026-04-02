@@ -1,6 +1,7 @@
 
 #include "ValveChannel.h"
 #include "Scheduler.h"
+#include "EventLog.h"
 
 #include <string.h>
 #include <esp_log.h>
@@ -17,7 +18,8 @@ ValveChannel::ValveChannel(int ch_num, const char *hap_name, const char *nvs_key
       m_active(false),
       m_remaining(0),
       m_timer(nullptr),
-      m_mutex(xSemaphoreCreateMutex())
+      m_mutex(xSemaphoreCreateMutex()),
+      m_log(nullptr)
 {
 }
 
@@ -38,9 +40,6 @@ hap_serv_t *ValveChannel::createService()
     hap_serv_add_char(m_service, hap_char_name_create((char *)m_hap_name));
     hap_serv_add_char(m_service, hap_char_set_duration_create(m_set_duration));
     hap_serv_add_char(m_service, hap_char_remaining_duration_create(0));
-
-    if (m_moisture_fn)
-        hap_serv_add_char(m_service, hap_char_water_level_create(0));
 
     hap_serv_set_priv(m_service, this);
     hap_serv_set_write_cb(m_service, hap_write_cb);
@@ -75,9 +74,16 @@ void ValveChannel::scheduledActivate(uint32_t duration_s)
 {
     if (m_active)
         return;
+    if (!isSchedEnabled())
+    {
+        ESP_LOGI(TAG, "CH%d skip schedule: disabled", m_ch_num);
+        if (m_log) m_log->add((uint8_t)m_ch_num, LogEvt::SCHED_DISABLED);
+        return;
+    }
     if (duration_s == 0)
     {
         ESP_LOGI(TAG, "CH%d skip schedule: duration is 0", m_ch_num);
+        if (m_log) m_log->add((uint8_t)m_ch_num, LogEvt::SCHED_SKIP_DUR);
         return;
     }
     if (m_moist_threshold_fn && m_moisture_fn)
@@ -88,21 +94,25 @@ void ValveChannel::scheduledActivate(uint32_t duration_s)
         {
             ESP_LOGI(TAG, "CH%d skip schedule: moisture %.1f >= threshold %d",
                      m_ch_num, moisture, (int)thr);
+            if (m_log) m_log->add((uint8_t)m_ch_num, LogEvt::SCHED_SKIP_MOI, (uint16_t)moisture);
             return;
         }
     }
+    if (m_log) m_log->add((uint8_t)m_ch_num, LogEvt::SCHED_START, (uint16_t)duration_s);
     onActivate(duration_s);
 }
 
 void ValveChannel::manualRun(uint32_t duration_s)
 {
     ESP_LOGI(TAG, "CH%d manual run %lus", m_ch_num, (unsigned long)duration_s);
+    if (m_log) m_log->add((uint8_t)m_ch_num, LogEvt::MANUAL_START, (uint16_t)duration_s);
     onActivate(duration_s);
 }
 
 void ValveChannel::manualStop()
 {
     ESP_LOGI(TAG, "CH%d manual stop", m_ch_num);
+    if (m_log) m_log->add((uint8_t)m_ch_num, LogEvt::MANUAL_STOP);
     onDeactivate();
 }
 
@@ -117,7 +127,7 @@ void ValveChannel::onActivate(uint32_t duration_s)
     hap_char_t *rem_dur_c = hap_serv_get_char_by_uuid(m_service, HAP_CHAR_UUID_REMAINING_DURATION);
 
     hap_val_t val;
-    val.b = true;
+    val.u = 1;
     hap_char_update_val(active_c, &val);
     hap_char_update_val(in_use_c, &val);
     val.u = duration_s;
@@ -147,11 +157,13 @@ void ValveChannel::onDeactivate()
         m_output_fn(false);
 
     hap_char_t *in_use_c  = hap_serv_get_char_by_uuid(m_service, HAP_CHAR_UUID_IN_USE);
+    hap_char_t *active_c  = hap_serv_get_char_by_uuid(m_service, HAP_CHAR_UUID_ACTIVE);
     hap_char_t *rem_dur_c = hap_serv_get_char_by_uuid(m_service, HAP_CHAR_UUID_REMAINING_DURATION);
 
     hap_val_t val;
-    val.b = false;
+    val.u = 0;
     hap_char_update_val(in_use_c, &val);
+    hap_char_update_val(active_c, &val);
     val.u = 0;
     hap_char_update_val(rem_dur_c, &val);
 
@@ -183,10 +195,11 @@ void ValveChannel::timer_cb(void *arg)
 
         hap_char_t *active_c = hap_serv_get_char_by_uuid(self->m_service, HAP_CHAR_UUID_ACTIVE);
         hap_char_t *in_use_c = hap_serv_get_char_by_uuid(self->m_service, HAP_CHAR_UUID_IN_USE);
-        val.b = false;
+        val.u = 0;
         hap_char_update_val(active_c, &val);
         hap_char_update_val(in_use_c, &val);
 
+        if (self->m_log) self->m_log->add((uint8_t)self->m_ch_num, LogEvt::RUN_COMPLETE);
         ESP_LOGI(TAG, "CH%d run complete", self->m_ch_num);
     }
 
@@ -202,7 +215,7 @@ int ValveChannel::hap_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_p
     hap_val_t val;
     if (!strcmp(uuid, HAP_CHAR_UUID_ACTIVE) || !strcmp(uuid, HAP_CHAR_UUID_IN_USE))
     {
-        val.b = self->m_active;
+        val.u = self->m_active ? 1 : 0;
         hap_char_update_val(hc, &val);
     }
     else if (!strcmp(uuid, HAP_CHAR_UUID_REMAINING_DURATION))
@@ -210,12 +223,6 @@ int ValveChannel::hap_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_p
         val.u = self->m_remaining;
         hap_char_update_val(hc, &val);
     }
-    else if (!strcmp(uuid, HAP_CHAR_UUID_WATER_LEVEL) && self->m_moisture_fn)
-    {
-        val.f = self->m_moisture_fn();
-        hap_char_update_val(hc, &val);
-    }
-
     return HAP_SUCCESS;
 }
 
@@ -231,10 +238,17 @@ int ValveChannel::hap_write_cb(hap_write_data_t *write_data, int count, void *se
         if (!strcmp(uuid, HAP_CHAR_UUID_ACTIVE))
         {
             hap_char_update_val(w->hc, &w->val);
-            if (w->val.b)
+            if (w->val.u)
+            {
+                if (self->m_log) self->m_log->add((uint8_t)self->m_ch_num, LogEvt::HAP_START,
+                                                  (uint16_t)self->m_set_duration);
                 self->onActivate(self->m_set_duration);
+            }
             else
+            {
+                if (self->m_log) self->m_log->add((uint8_t)self->m_ch_num, LogEvt::HAP_STOP);
                 self->onDeactivate();
+            }
             *(w->status) = HAP_STATUS_SUCCESS;
         }
         else if (!strcmp(uuid, HAP_CHAR_UUID_SET_DURATION))

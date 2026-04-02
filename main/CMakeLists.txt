@@ -35,6 +35,7 @@ set (srcs
 	OtaServer.cpp
 	ControlServer.cpp
 	WebBase.cpp
+	EventLog.cpp
 )
 
 idf_component_register(

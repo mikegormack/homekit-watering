@@ -12,6 +12,7 @@
 #include <OutputChannel.h>
 
 class Scheduler;
+class EventLog;
 
 class ValveChannel : public OutputChannel
 {
@@ -28,6 +29,7 @@ public:
     void setMoistureGetter(MoistureFn fn)    { m_moisture_fn = fn; }
     void setMoistureThreshold(MoistThrFn fn) { m_moist_threshold_fn = fn; }
     void setOutputFn(OutputFn fn)            { m_output_fn = fn; }
+    void setEventLog(EventLog &log)          { m_log = &log; }
 
     // Register the two scheduled events (from OutputChannel::m_evt) with a Scheduler
     void registerWithScheduler(Scheduler &sched);
@@ -57,6 +59,7 @@ private:
     MoistureFn         m_moisture_fn;
     OutputFn           m_output_fn;
     MoistThrFn         m_moist_threshold_fn;
+    EventLog          *m_log;
 
     void onActivate(uint32_t duration_s);
     void onDeactivate();

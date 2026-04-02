@@ -1,6 +1,7 @@
 
 #include <SettingsMenu.h>
 #include <EvtTimeScreen.h>
+#include <SchedEnableScreen.h>
 #include <MoistThrScreen.h>
 #include <TimezoneScreen.h>
 #include <WifiProvScreen.h>
@@ -41,10 +42,12 @@ void SettingsMenu::createMenu()
 	if (m_menu_ctx.out_ch[0] != nullptr)
 	{
 		m_menu_base.emplace_back(clock_icon16x16, "CH1 Time", nullptr, std::make_unique<EvtTimeScreen>(m_display, m_timeout, *m_menu_ctx.out_ch[0]));
+		m_menu_base.emplace_back(clock_icon16x16, "CH1 Sched", nullptr, std::make_unique<SchedEnableScreen>(m_display, m_timeout, *m_menu_ctx.out_ch[0]));
 	}
 	if (m_menu_ctx.out_ch[1] != nullptr)
 	{
 		m_menu_base.emplace_back(clock_icon16x16, "CH2 Time", nullptr, std::make_unique<EvtTimeScreen>(m_display, m_timeout, *m_menu_ctx.out_ch[1]));
+		m_menu_base.emplace_back(clock_icon16x16, "CH2 Sched", nullptr, std::make_unique<SchedEnableScreen>(m_display, m_timeout, *m_menu_ctx.out_ch[1]));
 	}
 	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Thr", nullptr, std::make_unique<MoistThrScreen>(m_display, m_timeout, m_menu_ctx));
 	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Cal", nullptr, std::make_unique<MoistCalScreen>(m_display, m_timeout, m_menu_ctx));

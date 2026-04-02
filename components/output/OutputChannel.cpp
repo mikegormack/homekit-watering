@@ -1,4 +1,5 @@
 
+#include <stdio.h>
 #include <nvs_flash.h>
 #include <nvs.h>
 
@@ -26,11 +27,16 @@ OutputChannel::~OutputChannel()
 
 void OutputChannel::save()
 {
+	char key_en[16];
+	snprintf(key_en, sizeof(key_en), "%s_en", m_name);
+
 	nvs_handle_t handle;
 	esp_err_t err = nvs_open("storage", NVS_READWRITE, &handle);
 	if (err == ESP_OK)
 	{
 		err = nvs_set_blob(handle, m_name, m_evt, sizeof(m_evt));
+		if (err == ESP_OK)
+			err = nvs_set_u8(handle, key_en, m_sched_enabled ? 1 : 0);
 		nvs_close(handle);
 	}
 	if (err == ESP_OK)
@@ -45,12 +51,18 @@ void OutputChannel::save()
 
 void OutputChannel::load()
 {
+	char key_en[16];
+	snprintf(key_en, sizeof(key_en), "%s_en", m_name);
+
 	nvs_handle_t handle;
 	esp_err_t err = nvs_open("storage", NVS_READONLY, &handle);
 	if (err == ESP_OK)
 	{
 		size_t len = sizeof(m_evt);
 		err = nvs_get_blob(handle, m_name, m_evt, &len);
+		uint8_t en = 1;
+		if (nvs_get_u8(handle, key_en, &en) == ESP_OK)
+			m_sched_enabled = (en != 0);
 		nvs_close(handle);
 	}
 	if (err == ESP_OK)

@@ -74,7 +74,7 @@ void OtaServer::start(httpd_handle_t server)
 
     httpd_uri_t uris[] = {
         { "/update",  HTTP_GET,  index_handler,   nullptr },
-        { "/update",  HTTP_POST, update_handler,  nullptr },
+        { "/update",  HTTP_POST, update_handler,  this    },
         { "/version", HTTP_GET,  version_handler, nullptr },
     };
     for (auto &u : uris)
@@ -172,6 +172,11 @@ esp_err_t OtaServer::update_handler(httpd_req_t *req)
     }
 
     ESP_LOGI(TAG, "OTA complete, rebooting");
+
+    OtaServer *self = static_cast<OtaServer *>(req->user_ctx);
+    if (self && self->on_ota_complete)
+        self->on_ota_complete();
+
     httpd_resp_sendstr(req, "Update successful. Device rebooting...");
 
     // Reboot after a short delay to allow the HTTP response to be sent

@@ -57,6 +57,7 @@ extern const char* timezone_posix(int idx); // defined in TimezoneScreen.cpp
 #include "OtaServer.h"
 #include "ControlServer.h"
 #include "WebBase.h"
+#include "EventLog.h"
 // WebBase owns the httpd instance; OtaServer and ControlServer register onto it
 #include <MoistInput.h>
 #include <UI.h>
@@ -71,6 +72,7 @@ char server_cert[] = {};
 
 static std::unique_ptr<ValveChannel> s_valves[2];
 static Scheduler                     s_sched;
+static EventLog                      s_event_log;
 static WebBase                       s_web_base;
 static OtaServer                     s_ota_server;
 static ControlServer                 s_ctrl_server;
@@ -94,6 +96,16 @@ static const char* TAG = "HAP Sprinkler";
 
 #define IO_RES_PIN 25
 #define IO_INT_PIN 26
+
+static int moisture_hap_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_priv, void *read_priv)
+{
+    MoistInput *moist = static_cast<MoistInput *>(serv_priv);
+    hap_val_t val;
+    val.f = moist ? (float)moist->getMoisture() : 0.0f;
+    hap_char_update_val(hc, &val);
+    *status = HAP_STATUS_SUCCESS;
+    return HAP_SUCCESS;
+}
 
 // Placeholder: button-triggered network/factory reset not yet implemented
 static void reset_key_init(uint32_t key_gpio_pin)
@@ -196,6 +208,14 @@ static void sprinkler_thread_entry(void* p)
 	{
 		ESP_LOGE(TAG, "nvm init fail %d", ret);
 		return;
+	}
+
+	s_event_log.load();
+	{
+		esp_reset_reason_t reason = esp_reset_reason();
+		bool is_crash = (reason == ESP_RST_PANIC   || reason == ESP_RST_WDT ||
+		                 reason == ESP_RST_TASK_WDT || reason == ESP_RST_INT_WDT);
+		s_event_log.add(0xFF, is_crash ? LogEvt::CRASH : LogEvt::BOOT, (uint16_t)reason);
 	}
 
 	// Create valve instances early so menu_ctx.out_ch[] is valid before UI creation
@@ -319,12 +339,22 @@ static void sprinkler_thread_entry(void* p)
 	/* Wire moisture getter, threshold, and scheduler into valve channels, then create HAP services */
 	s_valves[0]->setMoistureGetter([&]() -> float { return moisture_p ? (float)moisture_p->getMoisture() : 0.0f; });
 	s_valves[0]->setMoistureThreshold([&]() -> uint8_t { return moisture_p ? moisture_p->getThreshold() : 50; });
+	s_valves[0]->setEventLog(s_event_log);
 	s_valves[0]->registerWithScheduler(s_sched);
 	hap_acc_add_serv(accessory, s_valves[0]->createService());
 
+	s_valves[1]->setMoistureGetter([&]() -> float { return moisture_p ? (float)moisture_p->getMoisture() : 0.0f; });
 	s_valves[1]->setMoistureThreshold([&]() -> uint8_t { return moisture_p ? moisture_p->getThreshold() : 50; });
+	s_valves[1]->setEventLog(s_event_log);
 	s_valves[1]->registerWithScheduler(s_sched);
 	hap_acc_add_serv(accessory, s_valves[1]->createService());
+
+	/* Soil moisture as a single humidity sensor service */
+	hap_serv_t *moist_serv = hap_serv_humidity_sensor_create(0.0f);
+	hap_serv_add_char(moist_serv, hap_char_name_create((char *)"Soil Moisture"));
+	hap_serv_set_priv(moist_serv, moisture_p.get());
+	hap_serv_set_read_cb(moist_serv, moisture_hap_read_cb);
+	hap_acc_add_serv(accessory, moist_serv);
 
 	/* Create the Firmware Upgrade HomeKit Custom Service.
 	 * Please refer the FW Upgrade documentation under components/homekit/extras/include/hap_fw_upgrade.h
@@ -418,6 +448,19 @@ static void sprinkler_thread_entry(void* p)
 			s_valves[ch]->setEvent(i, evts[i]);
 		s_valves[ch]->save(); // scheduler already holds pointers into m_evt, no re-register needed
 	};
+	s_ctrl_server.sched_enabled_get = [](int ch) -> bool
+	{
+		return s_valves[ch] ? s_valves[ch]->isSchedEnabled() : true;
+	};
+	s_ctrl_server.sched_enabled_set = [](int ch, bool enabled)
+	{
+		if (!s_valves[ch]) return;
+		s_valves[ch]->setSchedEnabled(enabled);
+		s_valves[ch]->save();
+	};
+	s_ctrl_server.log_get   = [](char *buf, int len) { return s_event_log.toJson(buf, len); };
+	s_ctrl_server.log_clear = []() { s_event_log.clear(); };
+	s_ota_server.on_ota_complete = []() { s_event_log.add(0xFF, LogEvt::OTA_COMPLETE); };
 	s_ctrl_server.start(s_web_base.getHandle());
 
 	/* Wire wifi callbacks into menu context for WifiProvScreen */

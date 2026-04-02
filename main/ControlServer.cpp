@@ -36,6 +36,7 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     td, th { padding: 6px 10px; text-align: left; }
     th     { font-weight: normal; color: #666; font-size: 0.9em; }
     #msg   { margin-top: 8px; font-size: 0.9em; }
+    #log-table td:first-child { white-space: nowrap; color: #666; font-size: 0.85em; padding-right: 12px; }
   </style>
 </head>
 <body>
@@ -66,9 +67,10 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
   <div class="card">
     <h2>Schedule</h2>
     <table>
-      <tr><th></th><th>Event 1 time</th><th>Dur (min)</th><th>Event 2 time</th><th>Dur (min)</th></tr>
+      <tr><th></th><th>Enabled</th><th>Event 1 time</th><th>Dur (min)</th><th>Event 2 time</th><th>Dur (min)</th></tr>
       <tr>
         <td><b>CH1</b></td>
+        <td><input type="checkbox" id="c0en" checked></td>
         <td><input type="time" id="c0e0t"></td>
         <td><input type="number" id="c0e0d" min="0" max="255"></td>
         <td><input type="time" id="c0e1t"></td>
@@ -76,6 +78,7 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
       </tr>
       <tr>
         <td><b>CH2</b></td>
+        <td><input type="checkbox" id="c1en" checked></td>
         <td><input type="time" id="c1e0t"></td>
         <td><input type="number" id="c1e0d" min="0" max="255"></td>
         <td><input type="time" id="c1e1t"></td>
@@ -85,6 +88,19 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     <div class="row" style="margin-top:12px">
       <button onclick="saveSchedule()">Save Schedule</button>
       <span id="msg"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Event Log</h2>
+    <table id="log-table">
+      <tbody id="log-body">
+        <tr><td colspan="2" style="color:#aaa">Loading...</td></tr>
+      </tbody>
+    </table>
+    <div class="row" style="margin-top:12px">
+      <button class="stop" onclick="clearLog()">Clear Log</button>
+      <span id="log-msg"></span>
     </div>
   </div>
 
@@ -119,6 +135,7 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     function loadSchedule() {
       fetch('/api/schedule').then(r => r.json()).then(d => {
         for (let ch = 0; ch < 2; ch++) {
+          document.getElementById('c' + ch + 'en').checked = d.channels[ch].enabled !== false;
           for (let e = 0; e < 2; e++) {
             const ev = d.channels[ch].events[e];
             document.getElementById('c' + ch + 'e' + e + 't').value = pad(ev.hour) + ':' + pad(ev.min);
@@ -131,13 +148,14 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     function saveSchedule() {
       const channels = [];
       for (let ch = 0; ch < 2; ch++) {
+        const enabled = document.getElementById('c' + ch + 'en').checked;
         const events = [];
         for (let e = 0; e < 2; e++) {
           const t = document.getElementById('c' + ch + 'e' + e + 't').value.split(':');
           const d = parseInt(document.getElementById('c' + ch + 'e' + e + 'd').value) || 0;
           events.push({ hour: parseInt(t[0])||0, min: parseInt(t[1])||0, dur: d });
         }
-        channels.push({ events });
+        channels.push({ enabled, events });
       }
       fetch('/api/schedule', {
         method: 'POST',
@@ -157,9 +175,57 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
       fetch('/api/valve/' + ch + '/stop', { method: 'POST' });
     }
 
+    const EVT = {
+      1:'manual start', 2:'manual stop', 3:'sched start',
+      4:'sched skip (dur=0)', 5:'sched skip (moisture)',
+      6:'HomeKit start', 7:'HomeKit stop', 8:'run complete',
+      9:'sched disabled', 10:'boot', 11:'crash', 12:'OTA complete'
+    };
+
+    function fmtEvt(e) {
+      const ts = e.ts ? new Date(e.ts * 1000).toLocaleString() : '--';
+      const ch = e.ch === 255 ? 'SYS' : 'CH' + (e.ch + 1);
+      const name = EVT[e.type] || ('type ' + e.type);
+      let extra = '';
+      if (e.type === 1 || e.type === 3 || e.type === 6) {
+        const m = Math.floor(e.val / 60), s = e.val % 60;
+        extra = ' (' + m + 'min' + (s ? ' ' + s + 's' : '') + ')';
+      } else if (e.type === 5) {
+        extra = ' (moisture=' + e.val + '%)';
+      }
+      return { ts, desc: ch + ': ' + name + extra };
+    }
+
+    function refreshLog() {
+      fetch('/api/log').then(r => r.json()).then(entries => {
+        const tbody = document.getElementById('log-body');
+        tbody.innerHTML = '';
+        if (!entries.length) {
+          tbody.innerHTML = '<tr><td colspan="2" style="color:#aaa">No events yet</td></tr>';
+          return;
+        }
+        entries.forEach(e => {
+          const f = fmtEvt(e);
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + f.ts + '</td><td>' + f.desc + '</td>';
+          tbody.appendChild(tr);
+        });
+      }).catch(() => {});
+    }
+
+    function clearLog() {
+      fetch('/api/log/clear', { method: 'POST' }).then(() => {
+        document.getElementById('log-msg').textContent = 'Log cleared';
+        setTimeout(() => document.getElementById('log-msg').textContent = '', 3000);
+        refreshLog();
+      });
+    }
+
     loadSchedule();
     refreshStatus();
+    refreshLog();
     setInterval(refreshStatus, 2000);
+    setInterval(refreshLog, 10000);
   </script>
 </body>
 </html>)html";
@@ -189,6 +255,8 @@ void ControlServer::start(httpd_handle_t server)
         { "/api/status",   HTTP_GET,  status_handler,    this },
         { "/api/schedule", HTTP_GET,  sched_get_handler, this },
         { "/api/schedule", HTTP_POST, sched_post_handler,this },
+        { "/api/log",       HTTP_GET,  log_handler,       this },
+        { "/api/log/clear", HTTP_POST, log_clear_handler, this },
     };
     for (auto &u : fixed_uris)
         httpd_register_uri_handler(m_server, &u);
@@ -266,13 +334,15 @@ esp_err_t ControlServer::sched_get_handler(httpd_req_t *req)
 {
     ControlServer *s = server_from_req(req);
 
-    char buf[256];
+    char buf[320];
     int  n = 0;
     n += snprintf(buf + n, sizeof(buf) - n, "{\"channels\":[");
     for (int ch = 0; ch < NUM_VALVES; ch++)
     {
-        const time_evt_t *evts = s->sched_get ? s->sched_get(ch) : nullptr;
-        n += snprintf(buf + n, sizeof(buf) - n, "%s{\"events\":[", ch ? "," : "");
+        const time_evt_t *evts    = s->sched_get ? s->sched_get(ch) : nullptr;
+        bool              enabled = s->sched_enabled_get ? s->sched_enabled_get(ch) : true;
+        n += snprintf(buf + n, sizeof(buf) - n,
+            "%s{\"enabled\":%s,\"events\":[", ch ? "," : "", enabled ? "true" : "false");
         for (int e = 0; e < EVT_PER_CH; e++)
         {
             uint8_t h = evts ? evts[e].hour     : 0;
@@ -328,6 +398,10 @@ esp_err_t ControlServer::sched_post_handler(httpd_req_t *req)
         if (!cJSON_IsArray(events) || cJSON_GetArraySize(events) < EVT_PER_CH)
             continue;
 
+        cJSON *en_item = cJSON_GetObjectItem(chan, "enabled");
+        if (cJSON_IsBool(en_item) && s->sched_enabled_set)
+            s->sched_enabled_set(ch, cJSON_IsTrue(en_item));
+
         time_evt_t evts[EVT_PER_CH] = {};
         for (int e = 0; e < EVT_PER_CH; e++)
         {
@@ -347,5 +421,29 @@ esp_err_t ControlServer::sched_post_handler(httpd_req_t *req)
 
     cJSON_Delete(root);
     httpd_resp_sendstr(req, "Schedule saved");
+    return ESP_OK;
+}
+
+esp_err_t ControlServer::log_handler(httpd_req_t *req)
+{
+    ControlServer *s = server_from_req(req);
+
+    char buf[2048];
+    int  n = 0;
+    if (s->log_get)
+        n = s->log_get(buf, sizeof(buf));
+    else
+        n = snprintf(buf, sizeof(buf), "[]");
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, buf, n);
+    return ESP_OK;
+}
+
+esp_err_t ControlServer::log_clear_handler(httpd_req_t *req)
+{
+    ControlServer *s = server_from_req(req);
+    if (s->log_clear) s->log_clear();
+    httpd_resp_sendstr(req, "OK");
     return ESP_OK;
 }

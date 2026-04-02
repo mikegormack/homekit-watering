@@ -31,6 +31,7 @@ set(SOURCES
 	HapResetScreen.cpp
 	InfoScreen.cpp
 	MoistCalScreen.cpp
+	SchedEnableScreen.cpp
 )
 
 idf_component_register(

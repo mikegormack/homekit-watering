@@ -25,7 +25,11 @@ public:
 	void              setEvent(int i, const time_evt_t& evt) { m_evt[i] = evt; }
 	const char*       getName() const { return m_name; }
 
+	bool isSchedEnabled() const        { return m_sched_enabled; }
+	void setSchedEnabled(bool enabled) { m_sched_enabled = enabled; }
+
 private:
 	const char* m_name;
 	time_evt_t  m_evt[EVT_PER_CH];
+	bool        m_sched_enabled = true;
 };

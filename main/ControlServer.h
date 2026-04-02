@@ -15,15 +15,23 @@ public:
     using ValveRunFn    = std::function<void(int ch, uint32_t dur_s)>;
     using ValveStopFn   = std::function<void(int ch)>;
     using MoistureFn    = std::function<uint8_t()>;
-    using SchedGetFn    = std::function<const time_evt_t*(int ch)>;  // returns m_evt[2]
-    using SchedSetFn    = std::function<void(int ch, const time_evt_t* evts)>;
+    using SchedGetFn        = std::function<const time_evt_t*(int ch)>;  // returns m_evt[2]
+    using SchedSetFn        = std::function<void(int ch, const time_evt_t* evts)>;
+    using SchedEnabledGetFn = std::function<bool(int ch)>;
+    using SchedEnabledSetFn = std::function<void(int ch, bool enabled)>;
+    using LogGetFn          = std::function<int(char *buf, int len)>;    // returns bytes written
+    using LogClearFn        = std::function<void()>;
 
-    ValveStatusFn valve_status;
-    ValveRunFn    valve_run;
-    ValveStopFn   valve_stop;
-    MoistureFn    moisture;
-    SchedGetFn    sched_get;
-    SchedSetFn    sched_set;
+    ValveStatusFn    valve_status;
+    ValveRunFn       valve_run;
+    ValveStopFn      valve_stop;
+    MoistureFn       moisture;
+    SchedGetFn       sched_get;
+    SchedSetFn       sched_set;
+    SchedEnabledGetFn sched_enabled_get;
+    SchedEnabledSetFn sched_enabled_set;
+    LogGetFn         log_get;
+    LogClearFn       log_clear;
 
     void start(httpd_handle_t server);
     void stop();
@@ -43,4 +51,6 @@ private:
     static esp_err_t valve_stop_handler(httpd_req_t *req);
     static esp_err_t sched_get_handler(httpd_req_t *req);
     static esp_err_t sched_post_handler(httpd_req_t *req);
+    static esp_err_t log_handler(httpd_req_t *req);
+    static esp_err_t log_clear_handler(httpd_req_t *req);
 };
