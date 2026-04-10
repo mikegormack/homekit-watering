@@ -164,7 +164,7 @@ void UI::process_buttons()
 		newState[i] = (pin & m_buttons[i].io_mask) == 0;
 	}
 
-	ESP_LOGI(TAG, "pin = %04x", pin);
+	//ESP_LOGI(TAG, "pin = %04x", pin);
 
 	for (int i = 0; i < NUM_BUTTONS; i++)
 	{

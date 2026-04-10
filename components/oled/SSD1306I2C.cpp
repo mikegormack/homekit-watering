@@ -122,11 +122,11 @@ bool SSD1306I2C::display(void)
 	// set addressing bounds (horizontal mode)
 	uint8_t cmd1[] = { (uint8_t)(x_offset + minBoundX), (uint8_t)(x_offset + maxBoundX) };
 	/*RETURN_ERR_CHECK_BOOL(*/sendCommand(COLUMNADDR, cmd1, sizeof(cmd1));//, NULL);
-	ESP_LOGI("SSD1306Wire", "Set x %d, %d", x_offset + minBoundX, x_offset + maxBoundX);
+	//ESP_LOGI("SSD1306Wire", "Set x %d, %d", x_offset + minBoundX, x_offset + maxBoundX);
 
 	uint8_t cmd2[] = { minBoundY, maxBoundY };
 	/*RETURN_ERR_CHECK_BOOL(*/sendCommand(PAGEADDR, cmd2, sizeof(cmd2));//, NULL);
-	ESP_LOGI("SSD1306Wire", "Set y %d, %d", minBoundY, maxBoundY);
+	//ESP_LOGI("SSD1306Wire", "Set y %d, %d", minBoundY, maxBoundY);
 
 	// write each page up to specified width (horizontal addressing mode)
 	int page = minBoundY;
@@ -137,12 +137,12 @@ bool SSD1306I2C::display(void)
 		// calc the index into the buffer
 		int index = (page * this->width()) + minBoundX;
 
-		ESP_LOGI("SSD1306I2C", "Write to page %d width %d index %d", page, width, index);
+		//ESP_LOGI("SSD1306I2C", "Write to page %d width %d index %d", page, width, index);
 		if (sendPageData(&buffer[index], width) == false)
 		{
 			return false;
 		}
-		ESP_LOGI("SSD1306I2C", "Write ok");
+		//ESP_LOGI("SSD1306I2C", "Write ok");
 		page++;
 	}
 
