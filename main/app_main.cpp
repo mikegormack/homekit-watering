@@ -460,7 +460,7 @@ static void sprinkler_thread_entry(void* p)
 	};
 	s_ctrl_server.log_get   = [](char *buf, int len) { return s_event_log.toJson(buf, len); };
 	s_ctrl_server.log_clear = []() { s_event_log.clear(); };
-	s_ota_server.on_ota_complete = []() { s_event_log.add(0xFF, LogEvt::OTA_COMPLETE); };
+	s_ota_server.on_ota_complete = [](uint16_t ver) { s_event_log.add(0xFF, LogEvt::OTA_COMPLETE, ver); };
 	s_ctrl_server.start(s_web_base.getHandle());
 
 	/* Wire wifi callbacks into menu context for WifiProvScreen */

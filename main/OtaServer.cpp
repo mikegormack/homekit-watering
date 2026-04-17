@@ -2,6 +2,7 @@
 #include "OtaServer.h"
 
 #include <esp_log.h>
+#include <stdio.h>
 #include <esp_ota_ops.h>
 #include <esp_timer.h>
 #include <esp_app_format.h>
@@ -173,9 +174,18 @@ esp_err_t OtaServer::update_handler(httpd_req_t *req)
 
     ESP_LOGI(TAG, "OTA complete, rebooting");
 
+    uint16_t new_ver = 0;
+    esp_app_desc_t new_desc;
+    if (esp_ota_get_partition_description(update_partition, &new_desc) == ESP_OK)
+    {
+        int ma = 0, mi = 0, pa = 0;
+        sscanf(new_desc.version, "%d.%d.%d", &ma, &mi, &pa);
+        new_ver = (uint16_t)(ma * 10000 + mi * 100 + pa);
+    }
+
     OtaServer *self = static_cast<OtaServer *>(req->user_ctx);
     if (self && self->on_ota_complete)
-        self->on_ota_complete();
+        self->on_ota_complete(new_ver);
 
     httpd_resp_sendstr(req, "Update successful. Device rebooting...");
 

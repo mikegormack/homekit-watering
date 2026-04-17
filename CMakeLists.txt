@@ -18,5 +18,5 @@ set(EXTRA_COMPONENT_DIRS
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(sprinkler VERSION 1.0.1)
+project(sprinkler VERSION 1.0.3)
 

@@ -121,9 +121,12 @@ void HomeScreen::show_channel()
 	// On / Off
 	m_display.drawString(37, 24, active ? "On" : "Off");
 
-	// Clock icon + remaining time MM:SS
-	m_display.drawBitmap(65, 24, clock_icon16x16, 16, 16);
-	char buf[12];
-	snprintf(buf, sizeof(buf), "%02lu:%02lu", remaining / 60, remaining % 60);
-	m_display.drawString(83, 24, buf);
+	// Clock icon + remaining time MM:SS (only when active)
+	if (active)
+	{
+		m_display.drawBitmap(65, 24, clock_icon16x16, 16, 16);
+		char buf[12];
+		snprintf(buf, sizeof(buf), "%02lu:%02lu", remaining / 60, remaining % 60);
+		m_display.drawString(83, 24, buf);
+	}
 }

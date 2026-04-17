@@ -63,9 +63,10 @@ void Scheduler::check()
         SchedTime t = ev.get_time();
         if (t.hour != (uint8_t)local->tm_hour || t.min != (uint8_t)local->tm_min)
             continue;
-        if (ev.last_fired_min == local->tm_min)
-            continue; // already fired this minute
+        if (ev.last_fired_day == local->tm_yday && ev.last_fired_min == local->tm_min)
+            continue; // already fired this minute today
 
+        ev.last_fired_day = local->tm_yday;
         ev.last_fired_min = local->tm_min;
         ESP_LOGI(TAG, "Firing event at %02d:%02d", t.hour, t.min);
         ev.cb();

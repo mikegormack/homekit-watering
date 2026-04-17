@@ -29,6 +29,7 @@ private:
         TimeGetter get_time;
         Callback   cb;
         int        last_fired_min = -1;
+        int        last_fired_day = -1;
     };
 
     std::vector<Event> m_events;

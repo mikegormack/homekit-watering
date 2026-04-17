@@ -37,6 +37,7 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     th     { font-weight: normal; color: #666; font-size: 0.9em; }
     #msg   { margin-top: 8px; font-size: 0.9em; }
     #log-table td:first-child { white-space: nowrap; color: #666; font-size: 0.85em; padding-right: 12px; }
+    .rem { display: inline-block; min-width: 120px; }
   </style>
 </head>
 <body>
@@ -47,14 +48,14 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     <div class="row">
       <span class="lbl">CH1</span>
       <span id="ch0-state" class="off">--</span>
-      <span id="ch0-rem"></span>
+      <span id="ch0-rem" class="rem"></span>
       <button onclick="valveRun(0)">Run 20 min</button>
       <button class="stop" onclick="valveStop(0)">Stop</button>
     </div>
     <div class="row">
       <span class="lbl">CH2</span>
       <span id="ch1-state" class="off">--</span>
-      <span id="ch1-rem"></span>
+      <span id="ch1-rem" class="rem"></span>
       <button onclick="valveRun(1)">Run 20 min</button>
       <button class="stop" onclick="valveStop(1)">Stop</button>
     </div>
@@ -114,7 +115,7 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     }
 
     function refreshStatus() {
-      fetch('/api/status').then(r => r.json()).then(d => {
+      return fetch('/api/status').then(r => r.json()).then(d => {
         for (let ch = 0; ch < 2; ch++) {
           const v = d.valves[ch];
           const stEl = document.getElementById('ch' + ch + '-state');
@@ -133,7 +134,7 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     }
 
     function loadSchedule() {
-      fetch('/api/schedule').then(r => r.json()).then(d => {
+      return fetch('/api/schedule').then(r => r.json()).then(d => {
         for (let ch = 0; ch < 2; ch++) {
           document.getElementById('c' + ch + 'en').checked = d.channels[ch].enabled !== false;
           for (let e = 0; e < 2; e++) {
@@ -182,8 +183,19 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
       9:'sched disabled', 10:'boot', 11:'crash', 12:'OTA complete'
     };
 
+    function fmtDate(ts) {
+      const d = new Date(ts * 1000);
+      const Y = d.getFullYear();
+      const Mo = pad(d.getMonth() + 1);
+      const D = pad(d.getDate());
+      const H = pad(d.getHours());
+      const Mi = pad(d.getMinutes());
+      const S = pad(d.getSeconds());
+      return Y + '-' + Mo + '-' + D + ' ' + H + ':' + Mi + ':' + S;
+    }
+
     function fmtEvt(e) {
-      const ts = e.ts ? new Date(e.ts * 1000).toLocaleString() : '--';
+      const ts = e.ts ? fmtDate(e.ts) : '--';
       const ch = e.ch === 255 ? 'SYS' : 'CH' + (e.ch + 1);
       const name = EVT[e.type] || ('type ' + e.type);
       let extra = '';
@@ -192,6 +204,11 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
         extra = ' (' + m + 'min' + (s ? ' ' + s + 's' : '') + ')';
       } else if (e.type === 5) {
         extra = ' (moisture=' + e.val + '%)';
+      } else if (e.type === 12 && e.val) {
+        const ma = Math.floor(e.val / 10000);
+        const mi = Math.floor((e.val % 10000) / 100);
+        const pa = e.val % 100;
+        extra = ' (v' + ma + '.' + mi + '.' + pa + ')';
       }
       return { ts, desc: ch + ': ' + name + extra };
     }
@@ -221,9 +238,7 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
       });
     }
 
-    loadSchedule();
-    refreshStatus();
-    refreshLog();
+    Promise.all([loadSchedule(), refreshStatus()]).then(() => refreshLog());
     setInterval(refreshStatus, 2000);
     setInterval(refreshLog, 10000);
   </script>
