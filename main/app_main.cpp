@@ -45,8 +45,6 @@
 #include <hap_apple_chars.h>
 
 #include <hap_fw_upgrade.h>
-#include <iot_button.h>
-
 #include <esp_wifi.h>
 #include <app_hap_setup_payload.h>
 #include <app_wifi_handler.h>

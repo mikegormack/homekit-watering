@@ -5,7 +5,6 @@ set (REQ
 	ioexp
 	oled
 	esp_event
-	button
 	output
 	qrcodegen
 	nvs_flash

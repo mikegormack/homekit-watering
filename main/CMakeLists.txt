@@ -11,7 +11,6 @@ set (req
 	wifi_provisioning
 	#app_wifi
 	app_hap_setup_payload
-	button
 	ui
 	output
 	input
