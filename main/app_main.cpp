@@ -34,6 +34,7 @@
 #include <esp_timer.h>
 #include <esp_event.h>
 #include <esp_log.h>
+#include <esp_app_desc.h>
 #include <nvs_flash.h>
 #include <nvs.h>
 
@@ -320,7 +321,7 @@ static void sprinkler_thread_entry(void* p)
 	    .model = (char*)"S1",
 	    .manufacturer = (char*)"Gormack",
 	    .serial_num = (char*)"001122334455",
-	    .fw_rev = (char*)"1.0.0",
+	    .fw_rev = (char*)esp_app_get_description()->version,
 	    .hw_rev = NULL,
 	    .pv = (char*)"1.0.0",
 	    .cid = HAP_CID_SPRINKLER,
