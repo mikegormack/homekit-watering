@@ -2130,12 +2130,6 @@ CONFIG_WIFI_PROV_STA_ALL_CHANNEL_SCAN=y
 # end of Wi-Fi Provisioning Manager
 
 #
-# Button
-#
-CONFIG_IO_GLITCH_FILTER_TIME_MS=50
-# end of Button
-
-#
 # HomeKit
 #
 # CONFIG_HAP_MFI_ENABLE is not set
