@@ -56,6 +56,11 @@ bool ModbusMaster::begin(const Config &cfg)
     ESP_LOGI(TAG, "RS485 on UART%d: tx=%d rx=%d de=%d", (int)cfg.uart, cfg.tx_gpio, cfg.rx_gpio, cfg.de_gpio);
     const struct { const char *name; int gpio; bool output; } pins[] = {
         {"TX", cfg.tx_gpio, true}, {"RX", cfg.rx_gpio, false}, {"DE", cfg.de_gpio, true}};
+    if (cfg.tx_gpio == cfg.rx_gpio || cfg.tx_gpio == cfg.de_gpio || cfg.rx_gpio == cfg.de_gpio)
+    {
+        ESP_LOGE(TAG, "RS485 TX, RX and DE need three different GPIOs. Change them in menuconfig \"Soil probes (RS485)\"");
+        return false;
+    }
     for (const auto &p : pins)
     {
         const char *why = pin_problem(p.gpio, p.output);
