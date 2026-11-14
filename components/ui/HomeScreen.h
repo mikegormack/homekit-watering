@@ -20,4 +20,5 @@ private:
 	void update_clock();
 	void show_wifi();
 	void show_channel();
+	void show_soil_temp();
 };

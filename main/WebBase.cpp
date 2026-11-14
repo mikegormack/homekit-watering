@@ -32,10 +32,10 @@ void WebBase::start()
 {
     httpd_config_t config    = HTTPD_DEFAULT_CONFIG();
     config.server_port       = 8080;
-    config.max_open_sockets  = 2;
+    config.max_open_sockets  = 5;
     config.stack_size        = 8192;
     config.recv_wait_timeout = 30;   // needed for large OTA uploads
-    config.max_uri_handlers  = 16;   // base + OTA (3) + control (8)
+    config.max_uri_handlers  = 20;
 
     if (httpd_start(&m_server, &config) != ESP_OK)
     {

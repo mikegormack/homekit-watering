@@ -7,13 +7,13 @@
 #include <stdio.h>
 #include <iocfg.h>
 
-static const char *TAG = "ControlServer";
+static const char* TAG = "ControlServer";
 
 // ---------------------------------------------------------------------------
 // HTML page
 // ---------------------------------------------------------------------------
 
-static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
+static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -37,6 +37,7 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     th     { font-weight: normal; color: #666; font-size: 0.9em; }
     #msg   { margin-top: 8px; font-size: 0.9em; }
     #log-table td:first-child { white-space: nowrap; color: #666; font-size: 0.85em; padding-right: 12px; }
+    #trend-table td:first-child { white-space: nowrap; color: #666; font-size: 0.85em; padding-right: 12px; }
     .rem { display: inline-block; min-width: 120px; }
   </style>
 </head>
@@ -62,6 +63,35 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     <div class="row">
       <span class="lbl">Soil</span>
       <span id="moisture">--</span>%
+      <span style="color:#888;font-size:0.9em">(raw: <span id="moisture-raw">--</span>)</span>
+      <span style="margin-left:12px"><span id="soil-temp">--</span>&deg;C</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Moisture Calibration</h2>
+    <p style="margin:0 0 8px;font-size:0.9em;color:#555">Place probe in dry/wet soil, wait for ADC to settle, then sample.</p>
+    <div class="row"><span style="color:#888;font-size:0.9em">Live ADC: <b id="cal-adc">--</b></span></div>
+    <div class="row">
+      <span style="min-width:60px">Dry ADC</span>
+      <input type="number" id="cal-dry" min="0" max="4095" style="width:72px">
+      <button onclick="sampleDry()">Sample now</button>
+    </div>
+    <div class="row">
+      <span style="min-width:60px">Wet ADC</span>
+      <input type="number" id="cal-wet" min="0" max="4095" style="width:72px">
+      <button onclick="sampleWet()">Sample now</button>
+    </div>
+    <div class="row">
+      <button onclick="saveCal()">Save calibration</button>
+      <span id="cal-msg"></span>
+    </div>
+    <div class="row" style="border-top:1px solid #eee;margin-top:8px;padding-top:8px">
+      <span style="min-width:60px">Threshold</span>
+      <input type="number" id="cal-thr" min="0" max="100" style="width:56px">
+      <span>%</span>
+      <button onclick="saveThr()">Save</button>
+      <span id="thr-msg"></span>
     </div>
   </div>
 
@@ -105,8 +135,30 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     </div>
   </div>
 
+  <div class="card">
+    <h2>Moisture Trend</h2>
+    <canvas id="trend-canvas" style="display:block;border:1px solid #eee;border-radius:4px;max-width:100%"></canvas>
+    <table id="trend-table" style="margin-top:12px">
+      <thead><tr><th>Time</th><th>Moisture</th><th>Raw</th><th>Temp</th></tr></thead>
+      <tbody id="trend-body">
+        <tr><td colspan="4" style="color:#aaa">Loading...</td></tr>
+      </tbody>
+    </table>
+    <div class="row" style="margin-top:12px">
+      <button class="stop" onclick="clearTrend()">Clear Trend</button>
+      <span id="trend-msg"></span>
+    </div>
+  </div>
+
   <script>
     function pad(n) { return String(n).padStart(2,'0'); }
+
+    let g_cal = { dry: 0, wet: 4095, threshold: 50, valid: false };
+
+    function rawToMoisture(raw) {
+      if (!g_cal.valid || g_cal.dry === g_cal.wet) return null;
+      return Math.max(0, Math.min(100, Math.round(100 * (g_cal.dry - raw) / (g_cal.dry - g_cal.wet))));
+    }
 
     function fmtRemaining(s) {
       if (s <= 0) return '';
@@ -130,6 +182,10 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
           remEl.textContent = fmtRemaining(v.remaining);
         }
         document.getElementById('moisture').textContent = d.moisture;
+        const rawVal = d.moisture_raw !== undefined ? d.moisture_raw : '--';
+        document.getElementById('moisture-raw').textContent = rawVal;
+        document.getElementById('cal-adc').textContent = rawVal;
+        document.getElementById('soil-temp').textContent = d.soil_temp !== undefined ? d.soil_temp.toFixed(1) : '--';
       }).catch(() => {});
     }
 
@@ -176,6 +232,52 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
       fetch('/api/valve/' + ch + '/stop', { method: 'POST' });
     }
 
+    function loadCal() {
+      return fetch('/api/moisture/cal').then(r => r.json()).then(d => {
+        document.getElementById('cal-dry').value = d.dry;
+        document.getElementById('cal-wet').value = d.wet;
+        document.getElementById('cal-thr').value = d.threshold;
+        g_cal = d;
+      }).catch(() => {});
+    }
+
+    function sampleDry() {
+      const raw = parseInt(document.getElementById('cal-adc').textContent);
+      if (!isNaN(raw)) document.getElementById('cal-dry').value = raw;
+    }
+
+    function sampleWet() {
+      const raw = parseInt(document.getElementById('cal-adc').textContent);
+      if (!isNaN(raw)) document.getElementById('cal-wet').value = raw;
+    }
+
+    function saveCal() {
+      const dry = parseInt(document.getElementById('cal-dry').value);
+      const wet = parseInt(document.getElementById('cal-wet').value);
+      if (isNaN(dry) || isNaN(wet)) return;
+      fetch('/api/moisture/cal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dry, wet })
+      }).then(r => r.text()).then(t => {
+        document.getElementById('cal-msg').textContent = t;
+        setTimeout(() => document.getElementById('cal-msg').textContent = '', 3000);
+      });
+    }
+
+    function saveThr() {
+      const thr = parseInt(document.getElementById('cal-thr').value);
+      if (isNaN(thr) || thr < 0 || thr > 100) return;
+      fetch('/api/moisture/threshold', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threshold: thr })
+      }).then(r => r.text()).then(t => {
+        document.getElementById('thr-msg').textContent = t;
+        setTimeout(() => document.getElementById('thr-msg').textContent = '', 3000);
+      });
+    }
+
     const EVT = {
       1:'manual start', 2:'manual stop', 3:'sched start',
       4:'sched skip (dur=0)', 5:'sched skip (moisture)',
@@ -204,6 +306,11 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
         extra = ' (' + m + 'min' + (s ? ' ' + s + 's' : '') + ')';
       } else if (e.type === 5) {
         extra = ' (moisture=' + e.val + '%)';
+      } else if (e.type === 10 || e.type === 11) {
+        // esp_reset_reason_t
+        const RST = { 1:'power on', 2:'reset pin', 3:'software', 4:'panic', 5:'interrupt watchdog',
+                      6:'task watchdog', 7:'watchdog', 8:'deep sleep', 9:'brownout', 10:'SDIO' };
+        extra = ' (' + (RST[e.val] || 'reason ' + e.val) + ')';
       } else if (e.type === 12 && e.val) {
         const ma = Math.floor(e.val / 10000);
         const mi = Math.floor((e.val % 10000) / 100);
@@ -214,20 +321,25 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
     }
 
     function refreshLog() {
-      fetch('/api/log').then(r => r.json()).then(entries => {
-        const tbody = document.getElementById('log-body');
-        tbody.innerHTML = '';
-        if (!entries.length) {
-          tbody.innerHTML = '<tr><td colspan="2" style="color:#aaa">No events yet</td></tr>';
-          return;
-        }
-        entries.forEach(e => {
-          const f = fmtEvt(e);
-          const tr = document.createElement('tr');
-          tr.innerHTML = '<td>' + f.ts + '</td><td>' + f.desc + '</td>';
-          tbody.appendChild(tr);
+      return fetch('/api/log')
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(entries => {
+          const tbody = document.getElementById('log-body');
+          tbody.innerHTML = '';
+          if (!entries.length) {
+            tbody.innerHTML = '<tr><td colspan="2" style="color:#aaa">No events yet</td></tr>';
+            return;
+          }
+          entries.forEach(e => {
+            const f = fmtEvt(e);
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + f.ts + '</td><td>' + f.desc + '</td>';
+            tbody.appendChild(tr);
+          });
+        }).catch(e => {
+          const tbody = document.getElementById('log-body');
+          if (tbody) tbody.innerHTML = '<tr><td colspan="2" style="color:#c00">Error: ' + e.message + '</td></tr>';
         });
-      }).catch(() => {});
     }
 
     function clearLog() {
@@ -238,9 +350,124 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
       });
     }
 
-    Promise.all([loadSchedule(), refreshStatus()]).then(() => refreshLog());
-    setInterval(refreshStatus, 2000);
-    setInterval(refreshLog, 10000);
+    function drawTrendChart(canvas, entries) {
+      canvas.width = (canvas.parentElement ? canvas.parentElement.clientWidth - 2 : 540);
+      canvas.height = 180;
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+      const hasTemp = entries.some(e => e.t !== undefined);
+      const ml = 42, mr = hasTemp ? 40 : 12, mt = 10, mb = 36;
+      const cW = W - ml - mr, cH = H - mt - mb;
+      ctx.clearRect(0, 0, W, H);
+      if (!g_cal.valid) {
+        ctx.fillStyle = '#aaa'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('Set moisture calibration to view chart', W/2, H/2);
+        return;
+      }
+      const pts = entries.map(e => ({ ts: e.ts, m: rawToMoisture(e.r) })).filter(p => p.m !== null);
+      if (pts.length < 2) {
+        ctx.fillStyle = '#aaa'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('No trend data yet', W/2, H/2);
+        return;
+      }
+      for (let yi = 0; yi <= 4; yi++) {
+        const yp = mt + cH * (1 - yi/4);
+        ctx.strokeStyle = yi === 0 ? '#bbb' : '#eee'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(ml, yp); ctx.lineTo(ml + cW, yp); ctx.stroke();
+        ctx.fillStyle = '#888'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+        ctx.fillText(yi * 25 + '%', ml - 4, yp + 4);
+      }
+      ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ml, mt); ctx.lineTo(ml, mt + cH); ctx.lineTo(ml + cW, mt + cH); ctx.stroke();
+      const minTs = pts[0].ts, maxTs = pts[pts.length-1].ts;
+      const tsRange = maxTs - minTs || 1;
+      ctx.strokeStyle = '#1a8a3a'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      pts.forEach((p, i) => {
+        const x = ml + ((p.ts - minTs) / tsRange) * cW;
+        const y = mt + cH * (1 - p.m / 100);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      if (hasTemp) {
+        // Soil temp on its own right-hand scale, rounded out to whole 5 C steps
+        const tp = entries.filter(e => e.t !== undefined).map(e => ({ ts: e.ts, t: e.t / 10 }));
+        let tMin = Math.floor(Math.min(...tp.map(p => p.t)) / 5) * 5;
+        let tMax = Math.ceil(Math.max(...tp.map(p => p.t)) / 5) * 5;
+        if (tMax - tMin < 10) tMax = tMin + 10;
+        const tY = t => mt + cH * (1 - (t - tMin) / (tMax - tMin));
+        ctx.fillStyle = '#d2691e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+        for (let yi = 0; yi <= 4; yi++) {
+          const t = tMin + (tMax - tMin) * yi / 4;
+          ctx.fillText((Math.round(t * 10) / 10) + '°C', ml + cW + 4, tY(t) + 4);
+        }
+        ctx.strokeStyle = '#d2691e'; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        tp.forEach((p, i) => {
+          const x = ml + ((p.ts - minTs) / tsRange) * cW;
+          i === 0 ? ctx.moveTo(x, tY(p.t)) : ctx.lineTo(x, tY(p.t));
+        });
+        ctx.stroke();
+      }
+      if (pts.length <= 48) {
+        ctx.fillStyle = '#1a8a3a';
+        pts.forEach(p => {
+          const x = ml + ((p.ts - minTs) / tsRange) * cW;
+          const y = mt + cH * (1 - p.m / 100);
+          ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2 * Math.PI); ctx.fill();
+        });
+      }
+      ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+      const nLabels = Math.min(6, pts.length);
+      const step = Math.max(1, Math.floor(pts.length / nLabels));
+      for (let i = 0; i < pts.length; i += step) {
+        const p = pts[i];
+        const x = ml + ((p.ts - minTs) / tsRange) * cW;
+        const dt = new Date(p.ts * 1000);
+        const lbl = pad(dt.getMonth()+1)+'-'+pad(dt.getDate())+' '+pad(dt.getHours())+':'+pad(dt.getMinutes());
+        ctx.fillText(lbl, x, mt + cH + 28);
+      }
+    }
+
+    function renderTrendTable(entries) {
+      const tbody = document.getElementById('trend-body');
+      tbody.innerHTML = '';
+      if (!entries || !entries.length) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:#aaa">No data yet</td></tr>';
+        return;
+      }
+      entries.slice().reverse().slice(0, 20).forEach(e => {
+        const m = rawToMoisture(e.r);
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + fmtDate(e.ts) + '</td><td>' + (m !== null ? m + '%' : '--') + '</td><td>' + e.r + '</td><td>' + (e.t !== undefined ? (e.t / 10).toFixed(1) + '°C' : '--') + '</td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    function loadTrend() {
+      fetch('/api/moisture/trend').then(r => r.json()).then(data => {
+        drawTrendChart(document.getElementById('trend-canvas'), data);
+        renderTrendTable(data);
+      }).catch(() => {});
+    }
+
+    function clearTrend() {
+      fetch('/api/moisture/trend/clear', { method: 'POST' }).then(() => {
+        document.getElementById('trend-msg').textContent = 'Cleared';
+        setTimeout(() => document.getElementById('trend-msg').textContent = '', 3000);
+        loadTrend();
+      });
+    }
+
+    Promise.all([loadSchedule(), refreshStatus()])
+      .then(() => refreshLog())
+      .then(() => loadCal())
+      .then(() => loadTrend())
+      .then(() => {
+        setInterval(refreshStatus, 2000);
+        setInterval(refreshLog, 10000);
+        setInterval(loadTrend, 300000);
+      });
   </script>
 </body>
 </html>)html";
@@ -249,9 +476,9 @@ static const char *CONTROL_HTML = R"html(<!DOCTYPE html>
 // Helpers
 // ---------------------------------------------------------------------------
 
-static ControlServer *server_from_req(httpd_req_t *req)
+static ControlServer* server_from_req(httpd_req_t* req)
 {
-    return reinterpret_cast<ControlServer *>(req->user_ctx);
+	return reinterpret_cast<ControlServer*>(req->user_ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -260,205 +487,346 @@ static ControlServer *server_from_req(httpd_req_t *req)
 
 void ControlServer::start(httpd_handle_t server)
 {
-    m_server = server;
+	m_server = server;
 
-    for (int i = 0; i < NUM_VALVES; i++)
-        m_valve_ctx[i] = {this, i};
+	for (int i = 0; i < NUM_VALVES; i++)
+		m_valve_ctx[i] = {this, i};
 
-    httpd_uri_t fixed_uris[] = {
-        { "/control",      HTTP_GET,  index_handler,     this },
-        { "/api/status",   HTTP_GET,  status_handler,    this },
-        { "/api/schedule", HTTP_GET,  sched_get_handler, this },
-        { "/api/schedule", HTTP_POST, sched_post_handler,this },
-        { "/api/log",       HTTP_GET,  log_handler,       this },
-        { "/api/log/clear", HTTP_POST, log_clear_handler, this },
-    };
-    for (auto &u : fixed_uris)
-        httpd_register_uri_handler(m_server, &u);
+	httpd_uri_t fixed_uris[] = {
+	    {"/control", HTTP_GET, index_handler, this},
+	    {"/api/status", HTTP_GET, status_handler, this},
+	    {"/api/schedule", HTTP_GET, sched_get_handler, this},
+	    {"/api/schedule", HTTP_POST, sched_post_handler, this},
+	    {"/api/log", HTTP_GET, log_handler, this},
+	    {"/api/log/clear", HTTP_POST, log_clear_handler, this},
+	    {"/api/moisture/cal", HTTP_GET, moist_cal_get_handler, this},
+	    {"/api/moisture/cal", HTTP_POST, moist_cal_set_handler, this},
+	    {"/api/moisture/threshold", HTTP_POST, moist_thr_set_handler, this},
+	    {"/api/moisture/trend", HTTP_GET, trend_get_handler, this},
+	    {"/api/moisture/trend/clear", HTTP_POST, trend_clear_handler, this},
+	};
+	for (auto& u : fixed_uris)
+		httpd_register_uri_handler(m_server, &u);
 
-    for (int i = 0; i < NUM_VALVES; i++)
-    {
-        snprintf(m_run_uri[i],  sizeof(m_run_uri[i]),  "/api/valve/%d/run",  i);
-        snprintf(m_stop_uri[i], sizeof(m_stop_uri[i]), "/api/valve/%d/stop", i);
-        httpd_uri_t u = { m_run_uri[i],  HTTP_POST, valve_run_handler,  &m_valve_ctx[i] };
-        httpd_register_uri_handler(m_server, &u);
-        u = { m_stop_uri[i], HTTP_POST, valve_stop_handler, &m_valve_ctx[i] };
-        httpd_register_uri_handler(m_server, &u);
-    }
+	for (int i = 0; i < NUM_VALVES; i++)
+	{
+		snprintf(m_run_uri[i], sizeof(m_run_uri[i]), "/api/valve/%d/run", i);
+		snprintf(m_stop_uri[i], sizeof(m_stop_uri[i]), "/api/valve/%d/stop", i);
+		httpd_uri_t u = {m_run_uri[i], HTTP_POST, valve_run_handler, &m_valve_ctx[i]};
+		httpd_register_uri_handler(m_server, &u);
+		u = {m_stop_uri[i], HTTP_POST, valve_stop_handler, &m_valve_ctx[i]};
+		httpd_register_uri_handler(m_server, &u);
+	}
 
-    ESP_LOGI(TAG, "Control server started on port 8081");
+	ESP_LOGI(TAG, "Control server started on port 8081");
 }
 
 void ControlServer::stop()
 {
-    m_server = nullptr;
+	m_server = nullptr;
 }
 
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
 
-esp_err_t ControlServer::index_handler(httpd_req_t *req)
+esp_err_t ControlServer::index_handler(httpd_req_t* req)
 {
-    httpd_resp_set_type(req, "text/html");
-    httpd_resp_sendstr(req, CONTROL_HTML);
-    return ESP_OK;
+	httpd_resp_set_type(req, "text/html");
+	httpd_resp_sendstr(req, CONTROL_HTML);
+	return ESP_OK;
 }
 
-esp_err_t ControlServer::status_handler(httpd_req_t *req)
+esp_err_t ControlServer::status_handler(httpd_req_t* req)
 {
-    ControlServer *s = server_from_req(req);
+	ControlServer* s = server_from_req(req);
 
-    char buf[192];
-    int  n = 0;
-    n += snprintf(buf + n, sizeof(buf) - n, "{\"valves\":[");
-    for (int ch = 0; ch < NUM_VALVES; ch++)
-    {
-        ValveStatus v = s->valve_status ? s->valve_status(ch) : ValveStatus{false, 0};
-        n += snprintf(buf + n, sizeof(buf) - n,
-            "%s{\"active\":%s,\"remaining\":%lu}",
-            ch ? "," : "",
-            v.active ? "true" : "false",
-            (unsigned long)v.remaining_s);
-    }
-    uint8_t mo = s->moisture ? s->moisture() : 0;
-    snprintf(buf + n, sizeof(buf) - n, "],\"moisture\":%d}", (int)mo);
+	char buf[192];
+	int  n = 0;
+	n += snprintf(buf + n, sizeof(buf) - n, "{\"valves\":[");
+	for (int ch = 0; ch < NUM_VALVES; ch++)
+	{
+		ValveStatus v = s->valve_status ? s->valve_status(ch) : ValveStatus{false, 0};
+		n += snprintf(buf + n, sizeof(buf) - n, "%s{\"active\":%s,\"remaining\":%lu}", ch ? "," : "",
+		              v.active ? "true" : "false", (unsigned long)v.remaining_s);
+	}
+	uint8_t mo = s->moisture ? s->moisture() : 0;
+	int     raw = s->moisture_raw ? s->moisture_raw() : -1;
+	n += snprintf(buf + n, sizeof(buf) - n, "],\"moisture\":%d", (int)mo);
+	if (raw >= 0)
+		n += snprintf(buf + n, sizeof(buf) - n, ",\"moisture_raw\":%d", raw);
+	float temp_c = 0;
+	if (s->soil_temp && s->soil_temp(&temp_c))
+		n += snprintf(buf + n, sizeof(buf) - n, ",\"soil_temp\":%.1f", temp_c);
+	snprintf(buf + n, sizeof(buf) - n, "}");
 
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, buf);
-    return ESP_OK;
+	httpd_resp_set_type(req, "application/json");
+	httpd_resp_sendstr(req, buf);
+	return ESP_OK;
 }
 
-esp_err_t ControlServer::valve_run_handler(httpd_req_t *req)
+esp_err_t ControlServer::valve_run_handler(httpd_req_t* req)
 {
-    const ValveCtx *ctx = reinterpret_cast<const ValveCtx *>(req->user_ctx);
-    if (ctx->server->valve_run) ctx->server->valve_run(ctx->ch, DEFAULT_RUN_DURATION_S);
-    httpd_resp_sendstr(req, "OK");
-    return ESP_OK;
+	const ValveCtx* ctx = reinterpret_cast<const ValveCtx*>(req->user_ctx);
+	if (ctx->server->valve_run)
+		ctx->server->valve_run(ctx->ch, DEFAULT_RUN_DURATION_S);
+	httpd_resp_sendstr(req, "OK");
+	return ESP_OK;
 }
 
-esp_err_t ControlServer::valve_stop_handler(httpd_req_t *req)
+esp_err_t ControlServer::valve_stop_handler(httpd_req_t* req)
 {
-    const ValveCtx *ctx = reinterpret_cast<const ValveCtx *>(req->user_ctx);
-    if (ctx->server->valve_stop) ctx->server->valve_stop(ctx->ch);
-    httpd_resp_sendstr(req, "OK");
-    return ESP_OK;
+	const ValveCtx* ctx = reinterpret_cast<const ValveCtx*>(req->user_ctx);
+	if (ctx->server->valve_stop)
+		ctx->server->valve_stop(ctx->ch);
+	httpd_resp_sendstr(req, "OK");
+	return ESP_OK;
 }
 
-esp_err_t ControlServer::sched_get_handler(httpd_req_t *req)
+esp_err_t ControlServer::sched_get_handler(httpd_req_t* req)
 {
-    ControlServer *s = server_from_req(req);
+	ControlServer* s = server_from_req(req);
 
-    char buf[320];
-    int  n = 0;
-    n += snprintf(buf + n, sizeof(buf) - n, "{\"channels\":[");
-    for (int ch = 0; ch < NUM_VALVES; ch++)
-    {
-        const time_evt_t *evts    = s->sched_get ? s->sched_get(ch) : nullptr;
-        bool              enabled = s->sched_enabled_get ? s->sched_enabled_get(ch) : true;
-        n += snprintf(buf + n, sizeof(buf) - n,
-            "%s{\"enabled\":%s,\"events\":[", ch ? "," : "", enabled ? "true" : "false");
-        for (int e = 0; e < EVT_PER_CH; e++)
-        {
-            uint8_t h = evts ? evts[e].hour     : 0;
-            uint8_t m = evts ? evts[e].min      : 0;
-            uint8_t d = evts ? evts[e].duration : 0;
-            n += snprintf(buf + n, sizeof(buf) - n,
-                "%s{\"hour\":%d,\"min\":%d,\"dur\":%d}",
-                e ? "," : "", h, m, d);
-        }
-        n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    }
-    snprintf(buf + n, sizeof(buf) - n, "]}");
+	char buf[320];
+	int  n = 0;
+	n += snprintf(buf + n, sizeof(buf) - n, "{\"channels\":[");
+	for (int ch = 0; ch < NUM_VALVES; ch++)
+	{
+		const time_evt_t* evts = s->sched_get ? s->sched_get(ch) : nullptr;
+		bool              enabled = s->sched_enabled_get ? s->sched_enabled_get(ch) : true;
+		n += snprintf(buf + n, sizeof(buf) - n, "%s{\"enabled\":%s,\"events\":[", ch ? "," : "",
+		              enabled ? "true" : "false");
+		for (int e = 0; e < EVT_PER_CH; e++)
+		{
+			uint8_t h = evts ? evts[e].hour : 0;
+			uint8_t m = evts ? evts[e].min : 0;
+			uint8_t d = evts ? evts[e].duration : 0;
+			n += snprintf(buf + n, sizeof(buf) - n, "%s{\"hour\":%d,\"min\":%d,\"dur\":%d}", e ? "," : "", h, m, d);
+		}
+		n += snprintf(buf + n, sizeof(buf) - n, "]}");
+	}
+	snprintf(buf + n, sizeof(buf) - n, "]}");
 
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, buf);
-    return ESP_OK;
+	httpd_resp_set_type(req, "application/json");
+	httpd_resp_sendstr(req, buf);
+	return ESP_OK;
 }
 
-esp_err_t ControlServer::sched_post_handler(httpd_req_t *req)
+esp_err_t ControlServer::sched_post_handler(httpd_req_t* req)
 {
-    ControlServer *s = server_from_req(req);
+	ControlServer* s = server_from_req(req);
 
-    // Read body
-    char body[512];
-    int len = httpd_req_recv(req, body, sizeof(body) - 1);
-    if (len <= 0)
-    {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
-        return ESP_FAIL;
-    }
-    body[len] = '\0';
+	// Read body
+	char body[512];
+	int  len = httpd_req_recv(req, body, sizeof(body) - 1);
+	if (len <= 0)
+	{
+		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
+		return ESP_FAIL;
+	}
+	body[len] = '\0';
 
-    // Parse JSON: {"channels":[{"events":[{"hour":H,"min":M,"dur":D},...]},...]}
-    cJSON *root = cJSON_Parse(body);
-    if (!root)
-    {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
-        return ESP_FAIL;
-    }
+	// Parse JSON: {"channels":[{"events":[{"hour":H,"min":M,"dur":D},...]},...]}
+	cJSON* root = cJSON_Parse(body);
+	if (!root)
+	{
+		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+		return ESP_FAIL;
+	}
 
-    cJSON *channels = cJSON_GetObjectItem(root, "channels");
-    if (!cJSON_IsArray(channels) || cJSON_GetArraySize(channels) < NUM_VALVES)
-    {
-        cJSON_Delete(root);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad schema");
-        return ESP_FAIL;
-    }
+	cJSON* channels = cJSON_GetObjectItem(root, "channels");
+	if (!cJSON_IsArray(channels) || cJSON_GetArraySize(channels) < NUM_VALVES)
+	{
+		cJSON_Delete(root);
+		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad schema");
+		return ESP_FAIL;
+	}
 
-    for (int ch = 0; ch < NUM_VALVES; ch++)
-    {
-        cJSON *chan   = cJSON_GetArrayItem(channels, ch);
-        cJSON *events = cJSON_GetObjectItem(chan, "events");
-        if (!cJSON_IsArray(events) || cJSON_GetArraySize(events) < EVT_PER_CH)
-            continue;
+	for (int ch = 0; ch < NUM_VALVES; ch++)
+	{
+		cJSON* chan = cJSON_GetArrayItem(channels, ch);
+		cJSON* events = cJSON_GetObjectItem(chan, "events");
+		if (!cJSON_IsArray(events) || cJSON_GetArraySize(events) < EVT_PER_CH)
+			continue;
 
-        cJSON *en_item = cJSON_GetObjectItem(chan, "enabled");
-        if (cJSON_IsBool(en_item) && s->sched_enabled_set)
-            s->sched_enabled_set(ch, cJSON_IsTrue(en_item));
+		cJSON* en_item = cJSON_GetObjectItem(chan, "enabled");
+		if (cJSON_IsBool(en_item) && s->sched_enabled_set)
+			s->sched_enabled_set(ch, cJSON_IsTrue(en_item));
 
-        time_evt_t evts[EVT_PER_CH] = {};
-        for (int e = 0; e < EVT_PER_CH; e++)
-        {
-            cJSON *ev = cJSON_GetArrayItem(events, e);
-            if (!cJSON_IsObject(ev)) continue;
-            cJSON *h = cJSON_GetObjectItem(ev, "hour");
-            cJSON *m = cJSON_GetObjectItem(ev, "min");
-            cJSON *d = cJSON_GetObjectItem(ev, "dur");
-            if (!cJSON_IsNumber(h) || !cJSON_IsNumber(m) || !cJSON_IsNumber(d)) continue;
-            evts[e].hour     = (uint8_t)cJSON_GetNumberValue(h);
-            evts[e].min      = (uint8_t)cJSON_GetNumberValue(m);
-            evts[e].duration = (uint8_t)cJSON_GetNumberValue(d);
-        }
+		time_evt_t evts[EVT_PER_CH] = {};
+		for (int e = 0; e < EVT_PER_CH; e++)
+		{
+			cJSON* ev = cJSON_GetArrayItem(events, e);
+			if (!cJSON_IsObject(ev))
+				continue;
+			cJSON* h = cJSON_GetObjectItem(ev, "hour");
+			cJSON* m = cJSON_GetObjectItem(ev, "min");
+			cJSON* d = cJSON_GetObjectItem(ev, "dur");
+			if (!cJSON_IsNumber(h) || !cJSON_IsNumber(m) || !cJSON_IsNumber(d))
+				continue;
+			evts[e].hour = (uint8_t)cJSON_GetNumberValue(h);
+			evts[e].min = (uint8_t)cJSON_GetNumberValue(m);
+			evts[e].duration = (uint8_t)cJSON_GetNumberValue(d);
+		}
 
-        if (s->sched_set) s->sched_set(ch, evts);
-    }
+		if (s->sched_set)
+			s->sched_set(ch, evts);
+	}
 
-    cJSON_Delete(root);
-    httpd_resp_sendstr(req, "Schedule saved");
-    return ESP_OK;
+	cJSON_Delete(root);
+	httpd_resp_sendstr(req, "Schedule saved");
+	return ESP_OK;
 }
 
-esp_err_t ControlServer::log_handler(httpd_req_t *req)
+esp_err_t ControlServer::log_handler(httpd_req_t* req)
 {
-    ControlServer *s = server_from_req(req);
+	ControlServer* s = server_from_req(req);
 
-    char buf[2048];
-    int  n = 0;
-    if (s->log_get)
-        n = s->log_get(buf, sizeof(buf));
-    else
-        n = snprintf(buf, sizeof(buf), "[]");
+	char buf[2048];
+	int  n = 0;
+	if (s->log_get)
+		n = s->log_get(buf, sizeof(buf));
+	else
+		n = snprintf(buf, sizeof(buf), "[]");
 
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_send(req, buf, n);
-    return ESP_OK;
+	httpd_resp_set_type(req, "application/json");
+	httpd_resp_send(req, buf, n);
+	return ESP_OK;
 }
 
-esp_err_t ControlServer::log_clear_handler(httpd_req_t *req)
+esp_err_t ControlServer::log_clear_handler(httpd_req_t* req)
 {
-    ControlServer *s = server_from_req(req);
-    if (s->log_clear) s->log_clear();
-    httpd_resp_sendstr(req, "OK");
-    return ESP_OK;
+	ControlServer* s = server_from_req(req);
+	if (s->log_clear)
+		s->log_clear();
+	httpd_resp_sendstr(req, "OK");
+	return ESP_OK;
+}
+
+esp_err_t ControlServer::moist_cal_get_handler(httpd_req_t* req)
+{
+	ControlServer* s = server_from_req(req);
+	MoistureCal    cal = s->moisture_cal_get ? s->moisture_cal_get() : MoistureCal{0, 4095, 50, false};
+	char           buf[96];
+	snprintf(buf, sizeof(buf), "{\"dry\":%d,\"wet\":%d,\"threshold\":%d,\"valid\":%s}", cal.dry, cal.wet,
+	         (int)cal.threshold, cal.valid ? "true" : "false");
+	httpd_resp_set_type(req, "application/json");
+	httpd_resp_sendstr(req, buf);
+	return ESP_OK;
+}
+
+esp_err_t ControlServer::moist_cal_set_handler(httpd_req_t* req)
+{
+	ControlServer* s = server_from_req(req);
+	char           body[64];
+	int            len = httpd_req_recv(req, body, sizeof(body) - 1);
+	if (len <= 0)
+	{
+		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
+		return ESP_FAIL;
+	}
+	body[len] = '\0';
+	cJSON* root = cJSON_Parse(body);
+	if (!root)
+	{
+		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+		return ESP_FAIL;
+	}
+	cJSON* d = cJSON_GetObjectItem(root, "dry");
+	cJSON* w = cJSON_GetObjectItem(root, "wet");
+	if (!cJSON_IsNumber(d) || !cJSON_IsNumber(w))
+	{
+		cJSON_Delete(root);
+		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing dry/wet");
+		return ESP_FAIL;
+	}
+	int dry = (int)cJSON_GetNumberValue(d);
+	int wet = (int)cJSON_GetNumberValue(w);
+	cJSON_Delete(root);
+	if (s->moisture_cal_set)
+		s->moisture_cal_set(dry, wet);
+	httpd_resp_sendstr(req, "Calibration saved");
+	return ESP_OK;
+}
+
+esp_err_t ControlServer::moist_thr_set_handler(httpd_req_t* req)
+{
+	ControlServer* s = server_from_req(req);
+	char           body[32];
+	int            len = httpd_req_recv(req, body, sizeof(body) - 1);
+	if (len <= 0)
+	{
+		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
+		return ESP_FAIL;
+	}
+	body[len] = '\0';
+	cJSON* root = cJSON_Parse(body);
+	if (!root)
+	{
+		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+		return ESP_FAIL;
+	}
+	cJSON* t = cJSON_GetObjectItem(root, "threshold");
+	if (!cJSON_IsNumber(t))
+	{
+		cJSON_Delete(root);
+		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing threshold");
+		return ESP_FAIL;
+	}
+	int thr = (int)cJSON_GetNumberValue(t);
+	cJSON_Delete(root);
+	if (thr < 0)
+		thr = 0;
+	if (thr > 100)
+		thr = 100;
+	if (s->moisture_thr_set)
+		s->moisture_thr_set((uint8_t)thr);
+	httpd_resp_sendstr(req, "Threshold saved");
+	return ESP_OK;
+}
+
+esp_err_t ControlServer::trend_get_handler(httpd_req_t* req)
+{
+	ControlServer* s = server_from_req(req);
+
+	httpd_resp_set_type(req, "application/json");
+
+	if (!s->trend_get)
+	{
+		httpd_resp_sendstr(req, "[]");
+		return ESP_OK;
+	}
+
+	// 720 entries × ~35 bytes each (with temp) + brackets — 26 KB is sufficient
+	const int buf_size = 26 * 1024;
+	char*     buf = (char*)malloc(buf_size);
+	if (!buf)
+	{
+		httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OOM");
+		return ESP_FAIL;
+	}
+
+	int n = s->trend_get(buf, buf_size);
+
+	// Send in 4 KB chunks — keeps within lwIP TCP send buffer limits
+	const int CHUNK = 4096;
+	for (int off = 0; off < n; off += CHUNK)
+	{
+		int len = (n - off < CHUNK) ? n - off : CHUNK;
+		if (httpd_resp_send_chunk(req, buf + off, len) != ESP_OK)
+			break;
+	}
+	httpd_resp_send_chunk(req, NULL, 0);
+
+	free(buf);
+	return ESP_OK;
+}
+
+esp_err_t ControlServer::trend_clear_handler(httpd_req_t* req)
+{
+	ControlServer* s = server_from_req(req);
+	if (s->trend_clear)
+		s->trend_clear();
+	httpd_resp_sendstr(req, "OK");
+	return ESP_OK;
 }

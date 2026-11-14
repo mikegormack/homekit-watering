@@ -35,6 +35,7 @@ set (srcs
 	ControlServer.cpp
 	WebBase.cpp
 	EventLog.cpp
+	MoistureTrend.cpp
 )
 
 idf_component_register(

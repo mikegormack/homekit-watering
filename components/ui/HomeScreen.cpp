@@ -40,16 +40,10 @@ void HomeScreen::update()
 		m_display.drawBitmap(112, 0, tool_icon16x16, 16, 16);
 
 		uint8_t moisture = m_menu_ctx.moisture.getter ? m_menu_ctx.moisture.getter() : 0;
-		int     raw      = m_menu_ctx.moisture.raw_getter ? m_menu_ctx.moisture.raw_getter() : -1;
 		m_display.drawBitmap(40, 44, moisture_icon16x16, 16, 16);
 		m_display.drawProgressBar(58, 48, 30, 6, moisture);
-		if (raw >= 0)
-		{
-			char buf[12];
-			snprintf(buf, sizeof(buf), "%d", raw);
-			m_display.setFont(ArialMT_Plain_10);
-			m_display.drawString(90, 44, buf);
-		}
+
+		show_soil_temp();
 
 		update_clock();
 		show_wifi();
@@ -113,6 +107,21 @@ void HomeScreen::show_wifi()
 	{
 		m_display.drawBitmap(16, 0, signal1_icon16x16, 16, 16);
 	}
+}
+
+void HomeScreen::show_soil_temp()
+{
+	float temp_c = 0;
+	if (!m_menu_ctx.moisture.temp_getter || !m_menu_ctx.moisture.temp_getter(&temp_c))
+		return;
+
+	// Small, right-aligned in the bottom-right corner
+	char buf[12];
+	snprintf(buf, sizeof(buf), "%d°C", (int)(temp_c + (temp_c >= 0 ? 0.5f : -0.5f)));
+	m_display.setFont(ArialMT_Plain_10);
+	m_display.setTextAlignment(TEXT_ALIGN_RIGHT);
+	m_display.drawString(127, 51, buf);
+	m_display.setTextAlignment(TEXT_ALIGN_LEFT);
 }
 
 void HomeScreen::show_channel()

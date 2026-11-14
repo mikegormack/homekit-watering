@@ -2,6 +2,8 @@
 set (REQ
 	nvs_flash
 	esp_adc
+	driver
+	esp_timer
 )
 
 set(incl
@@ -11,6 +13,7 @@ set(incl
 
 set(SOURCES
 	MoistInput.cpp
+	StemmaSoil.cpp
 )
 
 idf_component_register(

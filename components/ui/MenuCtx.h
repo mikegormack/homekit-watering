@@ -26,6 +26,7 @@ public:
 	using RssiGetterFn     = std::function<int8_t()>;
 	using MoistGetterFn    = std::function<uint8_t()>;
 	using MoistRawGetterFn = std::function<int()>;
+	using MoistTempGetterFn = std::function<bool(float *temp_c)>;
 	using MoistCalSetterFn = std::function<void(int dry, int wet)>;
 	using MoistThrGetterFn = std::function<uint8_t()>;
 	using MoistThrSetterFn = std::function<void(uint8_t)>;
@@ -52,6 +53,7 @@ public:
 	{
 		MoistGetterFn    getter;
 		MoistRawGetterFn raw_getter;
+		MoistTempGetterFn temp_getter;  // soil temperature, false if unavailable
 		MoistCalSetterFn cal_setter;
 		MoistThrGetterFn thr_getter;
 		MoistThrSetterFn thr_setter;

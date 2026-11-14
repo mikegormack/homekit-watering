@@ -98,19 +98,22 @@ int EventLog::toJson(char *buf, int len)
     xSemaphoreTake(m_mutex, portMAX_DELAY);
 
     int n = 0;
-    n += snprintf(buf + n, len - n, "[");
+    buf[n++] = '[';
 
-    for (int i = 0; i < m_store.count && n < len - 4; i++)
+    for (int i = 0; i < m_store.count; i++)
     {
         int          idx = (m_store.head + m_store.count - 1 - i) % MAX_ENTRIES;
         const Entry &e   = m_store.entries[idx];
-        n += snprintf(buf + n, len - n,
+        int w = snprintf(buf + n, len - n - 1,
             "%s{\"ts\":%lu,\"ch\":%d,\"type\":%d,\"val\":%d}",
             i ? "," : "",
             (unsigned long)e.ts, (int)e.ch, (int)e.type, (int)e.value);
+        if (w < 0 || w >= len - n - 1) break;
+        n += w;
     }
 
-    n += snprintf(buf + n, len - n, "]");
+    buf[n++] = ']';
+    buf[n]   = '\0';
 
     xSemaphoreGive(m_mutex);
     return n;

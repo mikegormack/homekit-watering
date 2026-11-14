@@ -57,6 +57,7 @@ extern const char* timezone_posix(int idx); // defined in TimezoneScreen.cpp
 #include "ControlServer.h"
 #include "WebBase.h"
 #include "EventLog.h"
+#include "MoistureTrend.h"
 // WebBase owns the httpd instance; OtaServer and ControlServer register onto it
 #include <MoistInput.h>
 #include <UI.h>
@@ -72,6 +73,7 @@ char server_cert[] = {};
 static std::unique_ptr<ValveChannel> s_valves[2];
 static Scheduler                     s_sched;
 static EventLog                      s_event_log;
+static MoistureTrend                 s_mtrend;
 static WebBase                       s_web_base;
 static OtaServer                     s_ota_server;
 static ControlServer                 s_ctrl_server;
@@ -210,6 +212,7 @@ static void sprinkler_thread_entry(void* p)
 	}
 
 	s_event_log.load();
+	s_mtrend.load();
 	{
 		esp_reset_reason_t reason = esp_reset_reason();
 		bool is_crash = (reason == ESP_RST_PANIC   || reason == ESP_RST_WDT ||
@@ -294,9 +297,34 @@ static void sprinkler_thread_entry(void* p)
 		disp_p->flipScreenVertically();
 		disp_p->setLogBuffer(5, 30);
 		ui_p = std::make_unique<UI>(*disp_p, ioexp_p, menu_ctx);
-		moisture_p = std::make_unique<MoistInput>(MOISTURE_ADC_UNIT, MOISTURE_ADC_CHANNEL);
-		moisture_p->load();
 	}
+
+#if MOISTURE_USE_STEMMA
+	// Separate bus for the soil sensor so display/IO expander traffic stays off its lines
+	i2c_master_bus_config_t moist_bus_config = {.i2c_port = -1,
+	                                            .sda_io_num = MOIST_I2C_SDA_PIN,
+	                                            .scl_io_num = MOIST_I2C_SCL_PIN,
+	                                            .clk_source = I2C_CLK_SRC_DEFAULT,
+	                                            .glitch_ignore_cnt = 7,
+	                                            .intr_priority = 0,
+	                                            .trans_queue_depth = 0,
+	                                            .flags = {.enable_internal_pullup = 1, .allow_pd = 0}};
+	i2c_master_bus_handle_t moist_bus_handle = nullptr;
+	ret = i2c_new_master_bus(&moist_bus_config, &moist_bus_handle);
+	if (ret == ESP_OK)
+	{
+		ESP_LOGI(TAG, "moisture i2c bus init ok");
+		moisture_p = std::make_unique<MoistInput>(moist_bus_handle, MOISTURE_STEMMA_ADDR);
+	}
+	else
+	{
+		ESP_LOGE(TAG, "moisture i2c bus init failed %d", ret);
+	}
+#else
+	moisture_p = std::make_unique<MoistInput>(MOISTURE_ADC_UNIT, MOISTURE_ADC_CHANNEL);
+#endif
+	if (moisture_p)
+		moisture_p->load();
 
 	hap_acc_t* accessory;
 
@@ -435,7 +463,16 @@ static void sprinkler_thread_entry(void* p)
 	};
 	s_ctrl_server.valve_run  = [](int ch, uint32_t dur_s) { if (s_valves[ch]) s_valves[ch]->manualRun(dur_s); };
 	s_ctrl_server.valve_stop = [](int ch)                 { if (s_valves[ch]) s_valves[ch]->manualStop(); };
-	s_ctrl_server.moisture   = [&]() -> uint8_t { return moisture_p ? moisture_p->getMoisture() : 0; };
+	s_ctrl_server.moisture     = [&]() -> uint8_t { return moisture_p ? moisture_p->getMoisture() : 0; };
+	s_ctrl_server.moisture_raw = [&]() -> int     { return moisture_p ? moisture_p->getLatestRaw() : -1; };
+	s_ctrl_server.soil_temp    = [&](float *t) -> bool { return moisture_p && moisture_p->readTemperature(t); };
+	s_ctrl_server.moisture_cal_get = [&]() -> ControlServer::MoistureCal
+	{
+		if (!moisture_p) return {0, 4095, 50, false};
+		return {moisture_p->getRawDry(), moisture_p->getRawWet(), moisture_p->getThreshold(), moisture_p->isCalValid()};
+	};
+	s_ctrl_server.moisture_cal_set = [&](int dry, int wet) { if (moisture_p) moisture_p->setCal(dry, wet); };
+	s_ctrl_server.moisture_thr_set = [&](uint8_t thr)      { if (moisture_p) moisture_p->setThreshold(thr); };
 	s_ctrl_server.sched_get  = [](int ch) -> const time_evt_t *
 	{
 		return s_valves[ch] ? s_valves[ch]->getEvents() : nullptr;
@@ -459,6 +496,8 @@ static void sprinkler_thread_entry(void* p)
 	};
 	s_ctrl_server.log_get   = [](char *buf, int len) { return s_event_log.toJson(buf, len); };
 	s_ctrl_server.log_clear = []() { s_event_log.clear(); };
+	s_ctrl_server.trend_get   = [](char *buf, int len) { return s_mtrend.toJson(buf, len); };
+	s_ctrl_server.trend_clear = []() { s_mtrend.clear(); };
 	s_ota_server.on_ota_complete = [](uint16_t ver) { s_event_log.add(0xFF, LogEvt::OTA_COMPLETE, ver); };
 	s_ctrl_server.start(s_web_base.getHandle());
 
@@ -498,7 +537,8 @@ static void sprinkler_thread_entry(void* p)
 		return (int)idx;
 	};
 	menu_ctx.moisture.getter     = [&]() -> uint8_t { return moisture_p ? moisture_p->getMoisture() : 0; };
-	menu_ctx.moisture.raw_getter = [&]() -> int      { return moisture_p ? moisture_p->getAvgRaw()    : -1; };
+	menu_ctx.moisture.raw_getter = [&]() -> int      { return moisture_p ? moisture_p->getLatestRaw() : -1; };
+	menu_ctx.moisture.temp_getter = [&](float *t) -> bool { return moisture_p && moisture_p->readTemperature(t); };
 	menu_ctx.moisture.cal_setter = [&](int dry, int wet) { if (moisture_p) moisture_p->setCal(dry, wet); };
 	menu_ctx.moisture.thr_getter = [&]() -> uint8_t  { return moisture_p ? moisture_p->getThreshold() : 50; };
 	menu_ctx.moisture.thr_setter = [&](uint8_t val)  { if (moisture_p) moisture_p->setThreshold(val); };
@@ -536,6 +576,10 @@ static void sprinkler_thread_entry(void* p)
 	 * All event handlers should be registered only after app_wifi_init()
 	 */
 	esp_event_handler_register(HAP_EVENT, ESP_EVENT_ANY_ID, &sprinkler_hap_event_handler, NULL);
+
+	/* Start moisture trend logging (hourly; reads the filtered values from MoistInput) */
+	s_mtrend.start([&]() -> int { return moisture_p ? moisture_p->getAvgRaw() : -1; },
+	               [&](float *t) -> bool { return moisture_p && moisture_p->readTemperature(t); });
 
 	/* Start the schedule checker */
 	s_sched.start();
