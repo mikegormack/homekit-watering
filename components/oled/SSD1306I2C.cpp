@@ -34,7 +34,7 @@
 #include <SSD1306I2C.h>
 #include <esp_log.h>
 
-#include <freertos/freeRTOS.h>
+#include <freertos/FreeRTOS.h>
 
 #include <vector>
 #include <cstring>

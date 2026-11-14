@@ -39,6 +39,7 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
     #log-table td:first-child { white-space: nowrap; color: #666; font-size: 0.85em; padding-right: 12px; }
     #trend-table td:first-child { white-space: nowrap; color: #666; font-size: 0.85em; padding-right: 12px; }
     .rem { display: inline-block; min-width: 120px; }
+    .soil { display: inline-block; min-width: 110px; color: #2a6db0; font-size: 0.95em; }
   </style>
 </head>
 <body>
@@ -50,6 +51,7 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
       <span class="lbl">CH1</span>
       <span id="ch0-state" class="off">--</span>
       <span id="ch0-rem" class="rem"></span>
+      <span id="ch0-soil" class="soil"></span>
       <button onclick="valveRun(0)">Run 20 min</button>
       <button class="stop" onclick="valveStop(0)">Stop</button>
     </div>
@@ -57,41 +59,12 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
       <span class="lbl">CH2</span>
       <span id="ch1-state" class="off">--</span>
       <span id="ch1-rem" class="rem"></span>
+      <span id="ch1-soil" class="soil"></span>
       <button onclick="valveRun(1)">Run 20 min</button>
       <button class="stop" onclick="valveStop(1)">Stop</button>
     </div>
-    <div class="row">
-      <span class="lbl">Soil</span>
-      <span id="moisture">--</span>%
-      <span style="color:#888;font-size:0.9em">(raw: <span id="moisture-raw">--</span>)</span>
-      <span style="margin-left:12px"><span id="soil-temp">--</span>&deg;C</span>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Moisture Calibration</h2>
-    <p style="margin:0 0 8px;font-size:0.9em;color:#555">Place probe in dry/wet soil, wait for ADC to settle, then sample.</p>
-    <div class="row"><span style="color:#888;font-size:0.9em">Live ADC: <b id="cal-adc">--</b></span></div>
-    <div class="row">
-      <span style="min-width:60px">Dry ADC</span>
-      <input type="number" id="cal-dry" min="0" max="4095" style="width:72px">
-      <button onclick="sampleDry()">Sample now</button>
-    </div>
-    <div class="row">
-      <span style="min-width:60px">Wet ADC</span>
-      <input type="number" id="cal-wet" min="0" max="4095" style="width:72px">
-      <button onclick="sampleWet()">Sample now</button>
-    </div>
-    <div class="row">
-      <button onclick="saveCal()">Save calibration</button>
-      <span id="cal-msg"></span>
-    </div>
-    <div class="row" style="border-top:1px solid #eee;margin-top:8px;padding-top:8px">
-      <span style="min-width:60px">Threshold</span>
-      <input type="number" id="cal-thr" min="0" max="100" style="width:56px">
-      <span>%</span>
-      <button onclick="saveThr()">Save</button>
-      <span id="thr-msg"></span>
+    <div class="row" style="font-size:0.9em">
+      <a href="/probes">Soil probes: calibration, zone probes &amp; skip thresholds</a>
     </div>
   </div>
 
@@ -137,11 +110,12 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
 
   <div class="card">
     <h2>Moisture Trend</h2>
+    <p style="margin:0 0 8px;font-size:0.9em;color:#555">Hourly, from each zone's soil probe.</p>
     <canvas id="trend-canvas" style="display:block;border:1px solid #eee;border-radius:4px;max-width:100%"></canvas>
     <table id="trend-table" style="margin-top:12px">
-      <thead><tr><th>Time</th><th>Moisture</th><th>Raw</th><th>Temp</th></tr></thead>
+      <thead><tr><th>Time</th><th>CH1</th><th>CH2</th><th>CH1 temp</th><th>CH2 temp</th></tr></thead>
       <tbody id="trend-body">
-        <tr><td colspan="4" style="color:#aaa">Loading...</td></tr>
+        <tr><td colspan="5" style="color:#aaa">Loading...</td></tr>
       </tbody>
     </table>
     <div class="row" style="margin-top:12px">
@@ -152,13 +126,6 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
 
   <script>
     function pad(n) { return String(n).padStart(2,'0'); }
-
-    let g_cal = { dry: 0, wet: 4095, threshold: 50, valid: false };
-
-    function rawToMoisture(raw) {
-      if (!g_cal.valid || g_cal.dry === g_cal.wet) return null;
-      return Math.max(0, Math.min(100, Math.round(100 * (g_cal.dry - raw) / (g_cal.dry - g_cal.wet))));
-    }
 
     function fmtRemaining(s) {
       if (s <= 0) return '';
@@ -180,12 +147,11 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
             stEl.className = 'off';
           }
           remEl.textContent = fmtRemaining(v.remaining);
+          let soil = '';
+          if (v.moisture !== null) soil = '\u{1F4A7} ' + v.moisture.toFixed(0) + '%';
+          if (v.soil_temp !== null) soil += (soil ? '  ' : '') + v.soil_temp.toFixed(1) + '\u00b0C';
+          document.getElementById('ch' + ch + '-soil').textContent = soil;
         }
-        document.getElementById('moisture').textContent = d.moisture;
-        const rawVal = d.moisture_raw !== undefined ? d.moisture_raw : '--';
-        document.getElementById('moisture-raw').textContent = rawVal;
-        document.getElementById('cal-adc').textContent = rawVal;
-        document.getElementById('soil-temp').textContent = d.soil_temp !== undefined ? d.soil_temp.toFixed(1) : '--';
       }).catch(() => {});
     }
 
@@ -232,57 +198,12 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
       fetch('/api/valve/' + ch + '/stop', { method: 'POST' });
     }
 
-    function loadCal() {
-      return fetch('/api/moisture/cal').then(r => r.json()).then(d => {
-        document.getElementById('cal-dry').value = d.dry;
-        document.getElementById('cal-wet').value = d.wet;
-        document.getElementById('cal-thr').value = d.threshold;
-        g_cal = d;
-      }).catch(() => {});
-    }
-
-    function sampleDry() {
-      const raw = parseInt(document.getElementById('cal-adc').textContent);
-      if (!isNaN(raw)) document.getElementById('cal-dry').value = raw;
-    }
-
-    function sampleWet() {
-      const raw = parseInt(document.getElementById('cal-adc').textContent);
-      if (!isNaN(raw)) document.getElementById('cal-wet').value = raw;
-    }
-
-    function saveCal() {
-      const dry = parseInt(document.getElementById('cal-dry').value);
-      const wet = parseInt(document.getElementById('cal-wet').value);
-      if (isNaN(dry) || isNaN(wet)) return;
-      fetch('/api/moisture/cal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dry, wet })
-      }).then(r => r.text()).then(t => {
-        document.getElementById('cal-msg').textContent = t;
-        setTimeout(() => document.getElementById('cal-msg').textContent = '', 3000);
-      });
-    }
-
-    function saveThr() {
-      const thr = parseInt(document.getElementById('cal-thr').value);
-      if (isNaN(thr) || thr < 0 || thr > 100) return;
-      fetch('/api/moisture/threshold', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ threshold: thr })
-      }).then(r => r.text()).then(t => {
-        document.getElementById('thr-msg').textContent = t;
-        setTimeout(() => document.getElementById('thr-msg').textContent = '', 3000);
-      });
-    }
-
     const EVT = {
       1:'manual start', 2:'manual stop', 3:'sched start',
       4:'sched skip (dur=0)', 5:'sched skip (moisture)',
       6:'HomeKit start', 7:'HomeKit stop', 8:'run complete',
-      9:'sched disabled', 10:'boot', 11:'crash', 12:'OTA complete'
+      9:'sched disabled', 10:'boot', 11:'crash', 12:'OTA complete',
+      13:'sched start (no probe reading)', 14:'probe offline', 15:'probe online', 16:'probe firmware updated'
     };
 
     function fmtDate(ts) {
@@ -306,6 +227,10 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
         extra = ' (' + m + 'min' + (s ? ' ' + s + 's' : '') + ')';
       } else if (e.type === 5) {
         extra = ' (moisture=' + e.val + '%)';
+      } else if (e.type >= 13 && e.type <= 15) {
+        extra = ' (probe ' + e.val + ')';
+      } else if (e.type === 16) {
+        extra = ' (probe ' + (e.val >> 8) + ', v' + ((e.val >> 4) & 15) + '.' + (e.val & 15) + ')';
       } else if (e.type === 10 || e.type === 11) {
         // esp_reset_reason_t
         const RST = { 1:'power on', 2:'reset pin', 3:'software', 4:'panic', 5:'interrupt watchdog',
@@ -350,24 +275,22 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
       });
     }
 
+    // Trend entries: { ts, m: [CH1 %, CH2 %], t: [CH1 degC, CH2 degC] }, null where there was no reading.
+    const ZONE_COL = ['#1a8a3a', '#2a6db0'], TEMP_COL = ['#d2691e', '#b5651d'];
+
     function drawTrendChart(canvas, entries) {
       canvas.width = (canvas.parentElement ? canvas.parentElement.clientWidth - 2 : 540);
       canvas.height = 180;
       const ctx = canvas.getContext('2d');
       const W = canvas.width, H = canvas.height;
-      const hasTemp = entries.some(e => e.t !== undefined);
+      const hasTemp = entries.some(e => e.t[0] !== null || e.t[1] !== null);
       const ml = 42, mr = hasTemp ? 40 : 12, mt = 10, mb = 36;
       const cW = W - ml - mr, cH = H - mt - mb;
       ctx.clearRect(0, 0, W, H);
-      if (!g_cal.valid) {
-        ctx.fillStyle = '#aaa'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText('Set moisture calibration to view chart', W/2, H/2);
-        return;
-      }
-      const pts = entries.map(e => ({ ts: e.ts, m: rawToMoisture(e.r) })).filter(p => p.m !== null);
+      const pts = entries.filter(e => e.m[0] !== null || e.m[1] !== null);
       if (pts.length < 2) {
         ctx.fillStyle = '#aaa'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText('No trend data yet', W/2, H/2);
+        ctx.fillText('No trend data yet (assign probes to zones on the Soil Probes page)', W/2, H/2);
         return;
       }
       for (let yi = 0; yi <= 4; yi++) {
@@ -379,53 +302,66 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
       }
       ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(ml, mt); ctx.lineTo(ml, mt + cH); ctx.lineTo(ml + cW, mt + cH); ctx.stroke();
-      const minTs = pts[0].ts, maxTs = pts[pts.length-1].ts;
+      const minTs = entries[0].ts, maxTs = entries[entries.length-1].ts;
       const tsRange = maxTs - minTs || 1;
-      ctx.strokeStyle = '#1a8a3a'; ctx.lineWidth = 2;
-      ctx.beginPath();
-      pts.forEach((p, i) => {
-        const x = ml + ((p.ts - minTs) / tsRange) * cW;
-        const y = mt + cH * (1 - p.m / 100);
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      });
-      ctx.stroke();
+      const X = ts => ml + ((ts - minTs) / tsRange) * cW;
+
+      // One line per zone; gaps where a reading is missing
+      function line(vals, Y, color, width) {
+        ctx.strokeStyle = color; ctx.lineWidth = width;
+        ctx.beginPath();
+        let pen = false;
+        entries.forEach((e, i) => {
+          const v = vals(e);
+          if (v === null) { pen = false; return; }
+          pen ? ctx.lineTo(X(e.ts), Y(v)) : ctx.moveTo(X(e.ts), Y(v));
+          pen = true;
+        });
+        ctx.stroke();
+      }
+      const mY = m => mt + cH * (1 - m / 100);
+      for (let z = 0; z < 2; z++) line(e => e.m[z], mY, ZONE_COL[z], 2);
+
       if (hasTemp) {
         // Soil temp on its own right-hand scale, rounded out to whole 5 C steps
-        const tp = entries.filter(e => e.t !== undefined).map(e => ({ ts: e.ts, t: e.t / 10 }));
-        let tMin = Math.floor(Math.min(...tp.map(p => p.t)) / 5) * 5;
-        let tMax = Math.ceil(Math.max(...tp.map(p => p.t)) / 5) * 5;
+        const ts = [];
+        entries.forEach(e => e.t.forEach(t => { if (t !== null) ts.push(t); }));
+        let tMin = Math.floor(Math.min(...ts) / 5) * 5;
+        let tMax = Math.ceil(Math.max(...ts) / 5) * 5;
         if (tMax - tMin < 10) tMax = tMin + 10;
         const tY = t => mt + cH * (1 - (t - tMin) / (tMax - tMin));
-        ctx.fillStyle = '#d2691e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+        ctx.fillStyle = TEMP_COL[0]; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
         for (let yi = 0; yi <= 4; yi++) {
           const t = tMin + (tMax - tMin) * yi / 4;
           ctx.fillText((Math.round(t * 10) / 10) + '°C', ml + cW + 4, tY(t) + 4);
         }
-        ctx.strokeStyle = '#d2691e'; ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        tp.forEach((p, i) => {
-          const x = ml + ((p.ts - minTs) / tsRange) * cW;
-          i === 0 ? ctx.moveTo(x, tY(p.t)) : ctx.lineTo(x, tY(p.t));
-        });
-        ctx.stroke();
+        ctx.setLineDash([4, 3]);
+        for (let z = 0; z < 2; z++) line(e => e.t[z], tY, TEMP_COL[z], 1.5);
+        ctx.setLineDash([]);
       }
       if (pts.length <= 48) {
-        ctx.fillStyle = '#1a8a3a';
-        pts.forEach(p => {
-          const x = ml + ((p.ts - minTs) / tsRange) * cW;
-          const y = mt + cH * (1 - p.m / 100);
-          ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2 * Math.PI); ctx.fill();
-        });
+        for (let z = 0; z < 2; z++) {
+          ctx.fillStyle = ZONE_COL[z];
+          entries.forEach(e => {
+            if (e.m[z] === null) return;
+            ctx.beginPath(); ctx.arc(X(e.ts), mY(e.m[z]), 2.5, 0, 2 * Math.PI); ctx.fill();
+          });
+        }
+      }
+      // Legend
+      ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+      for (let z = 0; z < 2; z++) {
+        ctx.fillStyle = ZONE_COL[z];
+        ctx.fillText('CH' + (z + 1), ml + 6 + z * 44, mt + 12);
       }
       ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-      const nLabels = Math.min(6, pts.length);
-      const step = Math.max(1, Math.floor(pts.length / nLabels));
-      for (let i = 0; i < pts.length; i += step) {
-        const p = pts[i];
-        const x = ml + ((p.ts - minTs) / tsRange) * cW;
-        const dt = new Date(p.ts * 1000);
+      const nLabels = Math.min(6, entries.length);
+      const step = Math.max(1, Math.floor(entries.length / nLabels));
+      for (let i = 0; i < entries.length; i += step) {
+        const e = entries[i];
+        const dt = new Date(e.ts * 1000);
         const lbl = pad(dt.getMonth()+1)+'-'+pad(dt.getDate())+' '+pad(dt.getHours())+':'+pad(dt.getMinutes());
-        ctx.fillText(lbl, x, mt + cH + 28);
+        ctx.fillText(lbl, X(e.ts), mt + cH + 28);
       }
     }
 
@@ -433,19 +369,22 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
       const tbody = document.getElementById('trend-body');
       tbody.innerHTML = '';
       if (!entries || !entries.length) {
-        tbody.innerHTML = '<tr><td colspan="4" style="color:#aaa">No data yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="color:#aaa">No data yet</td></tr>';
         return;
       }
+      const pct = v => v !== null ? v.toFixed(1) + '%' : '--';
+      const deg = v => v !== null ? v.toFixed(1) + '°C' : '--';
       entries.slice().reverse().slice(0, 20).forEach(e => {
-        const m = rawToMoisture(e.r);
         const tr = document.createElement('tr');
-        tr.innerHTML = '<td>' + fmtDate(e.ts) + '</td><td>' + (m !== null ? m + '%' : '--') + '</td><td>' + e.r + '</td><td>' + (e.t !== undefined ? (e.t / 10).toFixed(1) + '°C' : '--') + '</td>';
+        tr.innerHTML = '<td>' + fmtDate(e.ts) + '</td><td>' + pct(e.m[0]) + '</td><td>' + pct(e.m[1]) +
+          '</td><td>' + deg(e.t[0]) + '</td><td>' + deg(e.t[1]) + '</td>';
         tbody.appendChild(tr);
       });
     }
 
     function loadTrend() {
-      fetch('/api/moisture/trend').then(r => r.json()).then(data => {
+      fetch('/api/moisture/trend').then(r => r.json()).then(rows => {
+        const data = rows.map(r => ({ ts: r[0], m: [r[1], r[2]], t: [r[3], r[4]] }));
         drawTrendChart(document.getElementById('trend-canvas'), data);
         renderTrendTable(data);
       }).catch(() => {});
@@ -461,7 +400,6 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
 
     Promise.all([loadSchedule(), refreshStatus()])
       .then(() => refreshLog())
-      .then(() => loadCal())
       .then(() => loadTrend())
       .then(() => {
         setInterval(refreshStatus, 2000);
@@ -499,9 +437,6 @@ void ControlServer::start(httpd_handle_t server)
 	    {"/api/schedule", HTTP_POST, sched_post_handler, this},
 	    {"/api/log", HTTP_GET, log_handler, this},
 	    {"/api/log/clear", HTTP_POST, log_clear_handler, this},
-	    {"/api/moisture/cal", HTTP_GET, moist_cal_get_handler, this},
-	    {"/api/moisture/cal", HTTP_POST, moist_cal_set_handler, this},
-	    {"/api/moisture/threshold", HTTP_POST, moist_thr_set_handler, this},
 	    {"/api/moisture/trend", HTTP_GET, trend_get_handler, this},
 	    {"/api/moisture/trend/clear", HTTP_POST, trend_clear_handler, this},
 	};
@@ -541,24 +476,30 @@ esp_err_t ControlServer::status_handler(httpd_req_t* req)
 {
 	ControlServer* s = server_from_req(req);
 
-	char buf[192];
+	// Per valve: state, and moisture / soil temperature from the zone's probe (null when unavailable)
+	char buf[320];
 	int  n = 0;
 	n += snprintf(buf + n, sizeof(buf) - n, "{\"valves\":[");
 	for (int ch = 0; ch < NUM_VALVES; ch++)
 	{
-		ValveStatus v = s->valve_status ? s->valve_status(ch) : ValveStatus{false, 0};
-		n += snprintf(buf + n, sizeof(buf) - n, "%s{\"active\":%s,\"remaining\":%lu}", ch ? "," : "",
-		              v.active ? "true" : "false", (unsigned long)v.remaining_s);
+		ValveStatus v      = s->valve_status ? s->valve_status(ch) : ValveStatus{false, 0};
+		float       mo     = s->moisture ? s->moisture(ch) : -1.0f;
+		float       temp_c = 0;
+		bool        temp   = s->soil_temp && s->soil_temp(ch, &temp_c);
+		char        mo_s[12], t_s[12];
+		if (mo >= 0)
+			snprintf(mo_s, sizeof(mo_s), "%.1f", mo);
+		else
+			snprintf(mo_s, sizeof(mo_s), "null");
+		if (temp)
+			snprintf(t_s, sizeof(t_s), "%.1f", temp_c);
+		else
+			snprintf(t_s, sizeof(t_s), "null");
+		n += snprintf(buf + n, sizeof(buf) - n,
+		              "%s{\"active\":%s,\"remaining\":%lu,\"moisture\":%s,\"soil_temp\":%s}", ch ? "," : "",
+		              v.active ? "true" : "false", (unsigned long)v.remaining_s, mo_s, t_s);
 	}
-	uint8_t mo = s->moisture ? s->moisture() : 0;
-	int     raw = s->moisture_raw ? s->moisture_raw() : -1;
-	n += snprintf(buf + n, sizeof(buf) - n, "],\"moisture\":%d", (int)mo);
-	if (raw >= 0)
-		n += snprintf(buf + n, sizeof(buf) - n, ",\"moisture_raw\":%d", raw);
-	float temp_c = 0;
-	if (s->soil_temp && s->soil_temp(&temp_c))
-		n += snprintf(buf + n, sizeof(buf) - n, ",\"soil_temp\":%.1f", temp_c);
-	snprintf(buf + n, sizeof(buf) - n, "}");
+	snprintf(buf + n, sizeof(buf) - n, "]}");
 
 	httpd_resp_set_type(req, "application/json");
 	httpd_resp_sendstr(req, buf);
@@ -703,88 +644,6 @@ esp_err_t ControlServer::log_clear_handler(httpd_req_t* req)
 	return ESP_OK;
 }
 
-esp_err_t ControlServer::moist_cal_get_handler(httpd_req_t* req)
-{
-	ControlServer* s = server_from_req(req);
-	MoistureCal    cal = s->moisture_cal_get ? s->moisture_cal_get() : MoistureCal{0, 4095, 50, false};
-	char           buf[96];
-	snprintf(buf, sizeof(buf), "{\"dry\":%d,\"wet\":%d,\"threshold\":%d,\"valid\":%s}", cal.dry, cal.wet,
-	         (int)cal.threshold, cal.valid ? "true" : "false");
-	httpd_resp_set_type(req, "application/json");
-	httpd_resp_sendstr(req, buf);
-	return ESP_OK;
-}
-
-esp_err_t ControlServer::moist_cal_set_handler(httpd_req_t* req)
-{
-	ControlServer* s = server_from_req(req);
-	char           body[64];
-	int            len = httpd_req_recv(req, body, sizeof(body) - 1);
-	if (len <= 0)
-	{
-		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
-		return ESP_FAIL;
-	}
-	body[len] = '\0';
-	cJSON* root = cJSON_Parse(body);
-	if (!root)
-	{
-		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
-		return ESP_FAIL;
-	}
-	cJSON* d = cJSON_GetObjectItem(root, "dry");
-	cJSON* w = cJSON_GetObjectItem(root, "wet");
-	if (!cJSON_IsNumber(d) || !cJSON_IsNumber(w))
-	{
-		cJSON_Delete(root);
-		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing dry/wet");
-		return ESP_FAIL;
-	}
-	int dry = (int)cJSON_GetNumberValue(d);
-	int wet = (int)cJSON_GetNumberValue(w);
-	cJSON_Delete(root);
-	if (s->moisture_cal_set)
-		s->moisture_cal_set(dry, wet);
-	httpd_resp_sendstr(req, "Calibration saved");
-	return ESP_OK;
-}
-
-esp_err_t ControlServer::moist_thr_set_handler(httpd_req_t* req)
-{
-	ControlServer* s = server_from_req(req);
-	char           body[32];
-	int            len = httpd_req_recv(req, body, sizeof(body) - 1);
-	if (len <= 0)
-	{
-		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty body");
-		return ESP_FAIL;
-	}
-	body[len] = '\0';
-	cJSON* root = cJSON_Parse(body);
-	if (!root)
-	{
-		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
-		return ESP_FAIL;
-	}
-	cJSON* t = cJSON_GetObjectItem(root, "threshold");
-	if (!cJSON_IsNumber(t))
-	{
-		cJSON_Delete(root);
-		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing threshold");
-		return ESP_FAIL;
-	}
-	int thr = (int)cJSON_GetNumberValue(t);
-	cJSON_Delete(root);
-	if (thr < 0)
-		thr = 0;
-	if (thr > 100)
-		thr = 100;
-	if (s->moisture_thr_set)
-		s->moisture_thr_set((uint8_t)thr);
-	httpd_resp_sendstr(req, "Threshold saved");
-	return ESP_OK;
-}
-
 esp_err_t ControlServer::trend_get_handler(httpd_req_t* req)
 {
 	ControlServer* s = server_from_req(req);
@@ -797,8 +656,8 @@ esp_err_t ControlServer::trend_get_handler(httpd_req_t* req)
 		return ESP_OK;
 	}
 
-	// 720 entries × ~35 bytes each (with temp) + brackets — 26 KB is sufficient
-	const int buf_size = 26 * 1024;
+	// 720 rows of [ts,m1,m2,t1,t2], at most ~38 bytes each + brackets
+	const int buf_size = 28 * 1024;
 	char*     buf = (char*)malloc(buf_size);
 	if (!buf)
 	{

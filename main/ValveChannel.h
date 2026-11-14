@@ -17,8 +17,7 @@ class EventLog;
 class ValveChannel : public OutputChannel
 {
 public:
-    using MoistureFn    = std::function<float()>;
-    using MoistThrFn    = std::function<uint8_t()>;
+    using MoistureFn    = std::function<float(uint8_t probe_addr)>;  // %, or < 0 when unavailable
     using OutputFn      = std::function<void(bool)>; // true = on, false = off
 
     // hap_name: shown in Home app; nvs_key: used for NVS schedule persistence
@@ -26,8 +25,9 @@ public:
                  uint32_t default_duration_s = 600);
     ~ValveChannel();
 
+    // Moisture of the zone's probe (OutputChannel::getProbeAddr) for skipping scheduled runs.
     void setMoistureGetter(MoistureFn fn)    { m_moisture_fn = fn; }
-    void setMoistureThreshold(MoistThrFn fn) { m_moist_threshold_fn = fn; }
+    float moisture() const { return (getProbeAddr() && m_moisture_fn) ? m_moisture_fn(getProbeAddr()) : -1.0f; }
     void setOutputFn(OutputFn fn)            { m_output_fn = fn; }
     void setEventLog(EventLog &log)          { m_log = &log; }
 
@@ -58,7 +58,6 @@ private:
     SemaphoreHandle_t  m_mutex;
     MoistureFn         m_moisture_fn;
     OutputFn           m_output_fn;
-    MoistThrFn         m_moist_threshold_fn;
     EventLog          *m_log;
 
     void onActivate(uint32_t duration_s);

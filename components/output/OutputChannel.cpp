@@ -27,8 +27,10 @@ OutputChannel::~OutputChannel()
 
 void OutputChannel::save()
 {
-	char key_en[16];
+	char key_en[16], key_pa[16], key_thr[16];
 	snprintf(key_en, sizeof(key_en), "%s_en", m_name);
+	snprintf(key_pa, sizeof(key_pa), "%s_pa", m_name);
+	snprintf(key_thr, sizeof(key_thr), "%s_thr", m_name);
 
 	nvs_handle_t handle;
 	esp_err_t err = nvs_open("storage", NVS_READWRITE, &handle);
@@ -37,6 +39,12 @@ void OutputChannel::save()
 		err = nvs_set_blob(handle, m_name, m_evt, sizeof(m_evt));
 		if (err == ESP_OK)
 			err = nvs_set_u8(handle, key_en, m_sched_enabled ? 1 : 0);
+		if (err == ESP_OK)
+			err = nvs_set_u8(handle, key_pa, m_probe_addr);
+		if (err == ESP_OK)
+			err = nvs_set_u8(handle, key_thr, m_moist_thr);
+		if (err == ESP_OK)
+			err = nvs_commit(handle);
 		nvs_close(handle);
 	}
 	if (err == ESP_OK)
@@ -51,8 +59,10 @@ void OutputChannel::save()
 
 void OutputChannel::load()
 {
-	char key_en[16];
+	char key_en[16], key_pa[16], key_thr[16];
 	snprintf(key_en, sizeof(key_en), "%s_en", m_name);
+	snprintf(key_pa, sizeof(key_pa), "%s_pa", m_name);
+	snprintf(key_thr, sizeof(key_thr), "%s_thr", m_name);
 
 	nvs_handle_t handle;
 	esp_err_t err = nvs_open("storage", NVS_READONLY, &handle);
@@ -63,6 +73,12 @@ void OutputChannel::load()
 		uint8_t en = 1;
 		if (nvs_get_u8(handle, key_en, &en) == ESP_OK)
 			m_sched_enabled = (en != 0);
+		nvs_get_u8(handle, key_pa, &m_probe_addr);
+		// Per-zone threshold; fall back to the old global threshold from the analog sensor days.
+		if (nvs_get_u8(handle, key_thr, &m_moist_thr) != ESP_OK)
+			nvs_get_u8(handle, "moist_thr", &m_moist_thr);
+		if (m_moist_thr > 100)
+			m_moist_thr = 100;
 		nvs_close(handle);
 	}
 	if (err == ESP_OK)

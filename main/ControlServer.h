@@ -14,13 +14,7 @@ public:
     using ValveStatusFn = std::function<ValveStatus(int ch)>;
     using ValveRunFn    = std::function<void(int ch, uint32_t dur_s)>;
     using ValveStopFn   = std::function<void(int ch)>;
-    using MoistureFn    = std::function<uint8_t()>;
-    using MoistureRawFn = std::function<int()>;
-
-    struct MoistureCal { int dry; int wet; uint8_t threshold; bool valid; };
-    using MoistureCalGetFn = std::function<MoistureCal()>;
-    using MoistureCalSetFn = std::function<void(int dry, int wet)>;
-    using MoistureThrSetFn = std::function<void(uint8_t thr)>;
+    using MoistureFn    = std::function<float(int ch)>;  // zone probe moisture %, < 0 if unavailable
     using SchedGetFn        = std::function<const time_evt_t*(int ch)>;  // returns m_evt[2]
     using SchedSetFn        = std::function<void(int ch, const time_evt_t* evts)>;
     using SchedEnabledGetFn = std::function<bool(int ch)>;
@@ -29,17 +23,13 @@ public:
     using LogClearFn        = std::function<void()>;
     using TrendGetFn        = std::function<int(char *buf, int len)>;
     using TrendClearFn      = std::function<void()>;
-    using SoilTempFn        = std::function<bool(float *temp_c)>;  // false = no reading
+    using SoilTempFn        = std::function<bool(int ch, float *temp_c)>;  // zone probe; false = no reading
 
     ValveStatusFn    valve_status;
     ValveRunFn       valve_run;
     ValveStopFn      valve_stop;
     MoistureFn       moisture;
-    MoistureRawFn    moisture_raw;
     SoilTempFn       soil_temp;
-    MoistureCalGetFn moisture_cal_get;
-    MoistureCalSetFn moisture_cal_set;
-    MoistureThrSetFn moisture_thr_set;
     SchedGetFn       sched_get;
     SchedSetFn       sched_set;
     SchedEnabledGetFn sched_enabled_get;
@@ -69,9 +59,6 @@ private:
     static esp_err_t sched_post_handler(httpd_req_t *req);
     static esp_err_t log_handler(httpd_req_t *req);
     static esp_err_t log_clear_handler(httpd_req_t *req);
-    static esp_err_t moist_cal_get_handler(httpd_req_t *req);
-    static esp_err_t moist_cal_set_handler(httpd_req_t *req);
-    static esp_err_t moist_thr_set_handler(httpd_req_t *req);
     static esp_err_t trend_get_handler(httpd_req_t *req);
     static esp_err_t trend_clear_handler(httpd_req_t *req);
 };

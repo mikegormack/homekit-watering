@@ -29,7 +29,7 @@ set(SOURCES
 	HapQrScreen.cpp
 	HapResetScreen.cpp
 	InfoScreen.cpp
-	MoistCalScreen.cpp
+	ProbesScreen.cpp
 	SchedEnableScreen.cpp
 )
 

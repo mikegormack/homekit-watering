@@ -9,7 +9,7 @@
 #include <HapQrScreen.h>
 #include <HapResetScreen.h>
 #include <InfoScreen.h>
-#include <MoistCalScreen.h>
+#include <ProbesScreen.h>
 
 #include <SSD1306I2C.h>
 #include <icons.h>
@@ -49,8 +49,11 @@ void SettingsMenu::createMenu()
 		m_menu_base.emplace_back(clock_icon16x16, "CH2 Time", nullptr, std::make_unique<EvtTimeScreen>(m_display, m_timeout, *m_menu_ctx.out_ch[1]));
 		m_menu_base.emplace_back(clock_icon16x16, "CH2 Sched", nullptr, std::make_unique<SchedEnableScreen>(m_display, m_timeout, *m_menu_ctx.out_ch[1]));
 	}
-	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Thr", nullptr, std::make_unique<MoistThrScreen>(m_display, m_timeout, m_menu_ctx));
-	m_menu_base.emplace_back(moisture_icon16x16, "Moisture Cal", nullptr, std::make_unique<MoistCalScreen>(m_display, m_timeout, m_menu_ctx));
+	if (m_menu_ctx.out_ch[0] != nullptr)
+		m_menu_base.emplace_back(moisture_icon16x16, "CH1 Moist", nullptr, std::make_unique<MoistThrScreen>(m_display, m_timeout, m_menu_ctx, 0));
+	if (m_menu_ctx.out_ch[1] != nullptr)
+		m_menu_base.emplace_back(moisture_icon16x16, "CH2 Moist", nullptr, std::make_unique<MoistThrScreen>(m_display, m_timeout, m_menu_ctx, 1));
+	m_menu_base.emplace_back(moisture_icon16x16, "Probes", nullptr, std::make_unique<ProbesScreen>(m_display, m_timeout, m_menu_ctx));
 	m_menu_base.emplace_back(clock_icon16x16, "Timezone", nullptr, std::make_unique<TimezoneScreen>(m_display, m_timeout, m_menu_ctx));
 	m_menu_base.emplace_back(wifi1_icon16x16, "WIFI", &m_menu_wifi, nullptr);
 	m_menu_base.emplace_back(clock_icon16x16, "Info", nullptr, std::make_unique<InfoScreen>(m_display, m_timeout));

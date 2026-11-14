@@ -29,6 +29,7 @@
 #include <string.h>
 #include <ctime>
 #include <memory>
+#include <vector>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_timer.h>
@@ -58,8 +59,9 @@ extern const char* timezone_posix(int idx); // defined in TimezoneScreen.cpp
 #include "WebBase.h"
 #include "EventLog.h"
 #include "MoistureTrend.h"
-// WebBase owns the httpd instance; OtaServer and ControlServer register onto it
-#include <MoistInput.h>
+#include "ProbeServer.h"
+// WebBase owns the httpd instance; OtaServer, ControlServer and ProbeServer register onto it
+#include <ProbeManager.h>
 #include <UI.h>
 
 #include <SSD1306I2C.h>
@@ -77,10 +79,11 @@ static MoistureTrend                 s_mtrend;
 static WebBase                       s_web_base;
 static OtaServer                     s_ota_server;
 static ControlServer                 s_ctrl_server;
+static ProbeManager                  s_probes;
+static ProbeServer                   s_probe_server(s_probes);
 
 static std::unique_ptr<SSD1306I2C> disp_p;
 static std::unique_ptr<UI>         ui_p;
-static std::unique_ptr<MoistInput> moisture_p;
 static std::shared_ptr<MCP23017>   ioexp_p;
 
 static MenuCtx menu_ctx;
@@ -98,14 +101,107 @@ static const char* TAG = "HAP Sprinkler";
 #define IO_RES_PIN 25
 #define IO_INT_PIN 26
 
-static int moisture_hap_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_priv, void *read_priv)
+/* HomeKit services for the soil probes configured at boot: a humidity sensor (soil moisture) and a
+ * temperature sensor per probe. The HomeKit database is fixed once HAP starts, so probes added or
+ * removed later appear after a restart. Entries keep their slot; only the address can change. */
+struct ProbeHap
 {
-    MoistInput *moist = static_cast<MoistInput *>(serv_priv);
-    hap_val_t val;
-    val.f = moist ? (float)moist->getMoisture() : 0.0f;
-    hap_char_update_val(hc, &val);
-    *status = HAP_STATUS_SUCCESS;
-    return HAP_SUCCESS;
+	uint8_t     addr;
+	hap_serv_t *hum;
+	hap_serv_t *temp;
+};
+static std::vector<ProbeHap> s_probe_hap;
+
+/* Soil temperature from a zone's probe; false when the zone has no probe or no usable reading. */
+static bool zone_soil_temp(int ch, float *temp_c)
+{
+	return s_valves[ch] && s_probes.temperature(s_valves[ch]->getProbeAddr(), temp_c);
+}
+
+/* Writes the probe's current state into one characteristic (notifies controllers if it changed). */
+static void probe_hap_set(hap_char_t *hc, const ProbeManager::Probe *p, bool is_temp)
+{
+	if (!hc)
+		return;
+	const ProbeManager::Reading *r    = p ? &p->r : nullptr;
+	bool                         live = r && r->online && !r->in_bootloader;
+	bool moist_ok = live && !(r->status & probe_reg::ST_UNCALIBRATED);
+	bool temp_ok  = live && !(r->status & probe_reg::ST_NTC_FAULT);
+	const char *uuid = hap_char_get_type_uuid(hc);
+
+	hap_val_t v;
+	if (!strcmp(uuid, HAP_CHAR_UUID_CURRENT_RELATIVE_HUMIDITY))
+	{
+		float m = moist_ok ? r->moisture / 100.0f : 0.0f;
+		v.f     = m < 0 ? 0 : m > 100 ? 100 : m;
+	}
+	else if (!strcmp(uuid, HAP_CHAR_UUID_CURRENT_TEMPERATURE))
+		v.f = temp_ok ? r->temp / 100.0f : 0.0f;
+	else if (!strcmp(uuid, HAP_CHAR_UUID_STATUS_ACTIVE))
+		v.b = live;
+	else if (!strcmp(uuid, HAP_CHAR_UUID_STATUS_FAULT))
+		v.u = (is_temp ? temp_ok : moist_ok) ? 0 : 1;
+	else
+		return;
+	hap_char_update_val(hc, &v);
+}
+
+static void probe_hap_update(const ProbeHap &ph, const ProbeManager::Probe *p)
+{
+	static const char *uuids[] = {HAP_CHAR_UUID_CURRENT_RELATIVE_HUMIDITY, HAP_CHAR_UUID_CURRENT_TEMPERATURE,
+	                              HAP_CHAR_UUID_STATUS_ACTIVE, HAP_CHAR_UUID_STATUS_FAULT};
+	for (const char *u : uuids)
+	{
+		probe_hap_set(hap_serv_get_char_by_uuid(ph.hum, u), p, false);
+		probe_hap_set(hap_serv_get_char_by_uuid(ph.temp, u), p, true);
+	}
+}
+
+static int probe_hap_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_priv, void *read_priv)
+{
+	const ProbeHap     *ph = static_cast<const ProbeHap *>(serv_priv);
+	ProbeManager::Probe p;
+	bool                have = ph && s_probes.get(ph->addr, p);
+	probe_hap_set(hc, have ? &p : nullptr, ph && hap_char_get_parent(hc) == ph->temp);
+	*status = HAP_STATUS_SUCCESS;
+	return HAP_SUCCESS;
+}
+
+/* Creates the probe services; returns a signature of the probe set so the HomeKit configuration
+ * number can be bumped when it changes between boots. */
+static uint32_t probe_hap_create(hap_acc_t *accessory)
+{
+	std::vector<ProbeManager::Probe> probes = s_probes.list();
+	s_probe_hap.reserve(ProbeManager::MAX_PROBES);  // entries are serv_priv pointers: never reallocate
+	uint32_t sig = 0x811C9DC5u;                     // FNV-1a over the addresses
+	for (const auto &p : probes)
+	{
+		sig = (sig ^ p.addr) * 0x01000193u;
+
+		ProbeHap ph = {p.addr, hap_serv_humidity_sensor_create(0.0f), hap_serv_temperature_sensor_create(0.0f)};
+		char     name[ProbeManager::NAME_LEN + 8];
+		snprintf(name, sizeof(name), "%s", p.name);
+		hap_serv_add_char(ph.hum, hap_char_name_create(name));
+		hap_serv_add_char(ph.hum, hap_char_status_active_create(false));
+		hap_serv_add_char(ph.hum, hap_char_status_fault_create(0));
+		snprintf(name, sizeof(name), "%s Temp", p.name);
+		hap_serv_add_char(ph.temp, hap_char_name_create(name));
+		hap_serv_add_char(ph.temp, hap_char_status_active_create(false));
+		hap_serv_add_char(ph.temp, hap_char_status_fault_create(0));
+		hap_char_float_set_constraints(hap_serv_get_char_by_uuid(ph.temp, HAP_CHAR_UUID_CURRENT_TEMPERATURE), -40.0f,
+		                               100.0f, 0.1f);
+
+		s_probe_hap.push_back(ph);
+		ProbeHap *slot = &s_probe_hap.back();
+		hap_serv_set_priv(ph.hum, slot);
+		hap_serv_set_priv(ph.temp, slot);
+		hap_serv_set_read_cb(ph.hum, probe_hap_read_cb);
+		hap_serv_set_read_cb(ph.temp, probe_hap_read_cb);
+		hap_acc_add_serv(accessory, ph.hum);
+		hap_acc_add_serv(accessory, ph.temp);
+	}
+	ESP_LOGI(TAG, "%d probe(s) in HomeKit", (int)s_probe_hap.size());
+	return sig;
 }
 
 // Placeholder: button-triggered network/factory reset not yet implemented
@@ -299,32 +395,8 @@ static void sprinkler_thread_entry(void* p)
 		ui_p = std::make_unique<UI>(*disp_p, ioexp_p, menu_ctx);
 	}
 
-#if MOISTURE_USE_STEMMA
-	// Separate bus for the soil sensor so display/IO expander traffic stays off its lines
-	i2c_master_bus_config_t moist_bus_config = {.i2c_port = -1,
-	                                            .sda_io_num = MOIST_I2C_SDA_PIN,
-	                                            .scl_io_num = MOIST_I2C_SCL_PIN,
-	                                            .clk_source = I2C_CLK_SRC_DEFAULT,
-	                                            .glitch_ignore_cnt = 7,
-	                                            .intr_priority = 0,
-	                                            .trans_queue_depth = 0,
-	                                            .flags = {.enable_internal_pullup = 1, .allow_pd = 0}};
-	i2c_master_bus_handle_t moist_bus_handle = nullptr;
-	ret = i2c_new_master_bus(&moist_bus_config, &moist_bus_handle);
-	if (ret == ESP_OK)
-	{
-		ESP_LOGI(TAG, "moisture i2c bus init ok");
-		moisture_p = std::make_unique<MoistInput>(moist_bus_handle, MOISTURE_STEMMA_ADDR);
-	}
-	else
-	{
-		ESP_LOGE(TAG, "moisture i2c bus init failed %d", ret);
-	}
-#else
-	moisture_p = std::make_unique<MoistInput>(MOISTURE_ADC_UNIT, MOISTURE_ADC_CHANNEL);
-#endif
-	if (moisture_p)
-		moisture_p->load();
+	/* Soil probe list (NVS); the bus and polling start after the HomeKit services exist */
+	s_probes.load();
 
 	hap_acc_t* accessory;
 
@@ -363,25 +435,17 @@ static void sprinkler_thread_entry(void* p)
 	/* Add Wi-Fi Transport service required for HAP Spec R16 */
 	hap_acc_add_wifi_transport_service(accessory, 0);
 
-	/* Wire moisture getter, threshold, and scheduler into valve channels, then create HAP services */
-	s_valves[0]->setMoistureGetter([&]() -> float { return moisture_p ? (float)moisture_p->getMoisture() : 0.0f; });
-	s_valves[0]->setMoistureThreshold([&]() -> uint8_t { return moisture_p ? moisture_p->getThreshold() : 50; });
-	s_valves[0]->setEventLog(s_event_log);
-	s_valves[0]->registerWithScheduler(s_sched);
-	hap_acc_add_serv(accessory, s_valves[0]->createService());
+	/* Wire probe moisture and scheduler into valve channels, then create HAP services */
+	for (auto &v : s_valves)
+	{
+		v->setMoistureGetter([](uint8_t addr) -> float { return s_probes.moisture(addr); });
+		v->setEventLog(s_event_log);
+		v->registerWithScheduler(s_sched);
+		hap_acc_add_serv(accessory, v->createService());
+	}
 
-	s_valves[1]->setMoistureGetter([&]() -> float { return moisture_p ? (float)moisture_p->getMoisture() : 0.0f; });
-	s_valves[1]->setMoistureThreshold([&]() -> uint8_t { return moisture_p ? moisture_p->getThreshold() : 50; });
-	s_valves[1]->setEventLog(s_event_log);
-	s_valves[1]->registerWithScheduler(s_sched);
-	hap_acc_add_serv(accessory, s_valves[1]->createService());
-
-	/* Soil moisture as a single humidity sensor service */
-	hap_serv_t *moist_serv = hap_serv_humidity_sensor_create(0.0f);
-	hap_serv_add_char(moist_serv, hap_char_name_create((char *)"Soil Moisture"));
-	hap_serv_set_priv(moist_serv, moisture_p.get());
-	hap_serv_set_read_cb(moist_serv, moisture_hap_read_cb);
-	hap_acc_add_serv(accessory, moist_serv);
+	/* Soil probes: humidity + temperature sensor per configured probe */
+	uint32_t probe_sig = probe_hap_create(accessory);
 
 	/* Create the Firmware Upgrade HomeKit Custom Service.
 	 * Please refer the FW Upgrade documentation under components/homekit/extras/include/hap_fw_upgrade.h
@@ -451,6 +515,49 @@ static void sprinkler_thread_entry(void* p)
 	/* Initialize Wi-Fi */
 	app_wifi_handler_init();
 
+	/* Start the RS485 probe bus and polling */
+	s_probes.on_reading = [](const ProbeManager::Probe &p)
+	{
+		for (const auto &ph : s_probe_hap)
+			if (ph.addr == p.addr)
+				probe_hap_update(ph, &p);
+	};
+	s_probes.on_event = [](ProbeManager::Event ev, uint8_t addr, uint16_t val)
+	{
+		switch (ev)
+		{
+			case ProbeManager::Event::OFFLINE: s_event_log.add(0xFF, LogEvt::PROBE_OFFLINE, addr); break;
+			case ProbeManager::Event::ONLINE:  s_event_log.add(0xFF, LogEvt::PROBE_ONLINE, addr); break;
+			case ProbeManager::Event::FW_UPDATED:
+				s_event_log.add(0xFF, LogEvt::PROBE_FW,
+				                (uint16_t)(addr << 8 | ((val >> 8) & 0xF) << 4 | (val & 0xF)));
+				break;
+		}
+	};
+	s_probes.on_readdress = [](uint8_t old_addr, uint8_t new_addr)
+	{
+		for (auto &v : s_valves)
+			if (v && v->getProbeAddr() == old_addr)
+			{
+				v->setProbeAddr(new_addr);
+				v->save();
+			}
+		for (auto &ph : s_probe_hap)
+			if (ph.addr == old_addr)
+				ph.addr = new_addr;
+	};
+	{
+		ModbusMaster::Config bus = {
+		    .uart    = (uart_port_t)CONFIG_PROBE_UART_NUM,
+		    .tx_gpio = CONFIG_PROBE_UART_TX_GPIO,
+		    .rx_gpio = CONFIG_PROBE_UART_RX_GPIO,
+		    .de_gpio = CONFIG_PROBE_UART_DE_GPIO,
+		    .baud    = CONFIG_PROBE_BAUD,
+		};
+		if (!s_probes.begin(bus, CONFIG_PROBE_POLL_INTERVAL_S))
+			ESP_LOGE(TAG, "RS485 probe bus init failed");
+	}
+
 	/* Start shared HTTP server then register OTA and control handlers */
 	s_web_base.start();
 	s_ota_server.start(s_web_base.getHandle());
@@ -463,16 +570,8 @@ static void sprinkler_thread_entry(void* p)
 	};
 	s_ctrl_server.valve_run  = [](int ch, uint32_t dur_s) { if (s_valves[ch]) s_valves[ch]->manualRun(dur_s); };
 	s_ctrl_server.valve_stop = [](int ch)                 { if (s_valves[ch]) s_valves[ch]->manualStop(); };
-	s_ctrl_server.moisture     = [&]() -> uint8_t { return moisture_p ? moisture_p->getMoisture() : 0; };
-	s_ctrl_server.moisture_raw = [&]() -> int     { return moisture_p ? moisture_p->getLatestRaw() : -1; };
-	s_ctrl_server.soil_temp    = [&](float *t) -> bool { return moisture_p && moisture_p->readTemperature(t); };
-	s_ctrl_server.moisture_cal_get = [&]() -> ControlServer::MoistureCal
-	{
-		if (!moisture_p) return {0, 4095, 50, false};
-		return {moisture_p->getRawDry(), moisture_p->getRawWet(), moisture_p->getThreshold(), moisture_p->isCalValid()};
-	};
-	s_ctrl_server.moisture_cal_set = [&](int dry, int wet) { if (moisture_p) moisture_p->setCal(dry, wet); };
-	s_ctrl_server.moisture_thr_set = [&](uint8_t thr)      { if (moisture_p) moisture_p->setThreshold(thr); };
+	s_ctrl_server.moisture   = [](int ch) -> float { return s_valves[ch] ? s_valves[ch]->moisture() : -1.0f; };
+	s_ctrl_server.soil_temp  = [](int ch, float *t) -> bool { return zone_soil_temp(ch, t); };
 	s_ctrl_server.sched_get  = [](int ch) -> const time_evt_t *
 	{
 		return s_valves[ch] ? s_valves[ch]->getEvents() : nullptr;
@@ -499,7 +598,22 @@ static void sprinkler_thread_entry(void* p)
 	s_ctrl_server.trend_get   = [](char *buf, int len) { return s_mtrend.toJson(buf, len); };
 	s_ctrl_server.trend_clear = []() { s_mtrend.clear(); };
 	s_ota_server.on_ota_complete = [](uint16_t ver) { s_event_log.add(0xFF, LogEvt::OTA_COMPLETE, ver); };
+	s_ota_server.partition_busy  = []() { return s_probes.busy(); };
 	s_ctrl_server.start(s_web_base.getHandle());
+
+	s_probe_server.zone_get = [](int ch) -> ProbeServer::Zone
+	{
+		if (!s_valves[ch]) return {0, 50};
+		return {s_valves[ch]->getProbeAddr(), s_valves[ch]->getMoistThreshold()};
+	};
+	s_probe_server.zone_set = [](int ch, const ProbeServer::Zone &z)
+	{
+		if (!s_valves[ch]) return;
+		s_valves[ch]->setProbeAddr(z.probe_addr);
+		s_valves[ch]->setMoistThreshold(z.threshold);
+		s_valves[ch]->save();
+	};
+	s_probe_server.start(s_web_base.getHandle());
 
 	/* Wire wifi callbacks into menu context for WifiProvScreen */
 	menu_ctx.wifi.start_prov = []() { return wifi_handler_start_provisioning(); };
@@ -536,12 +650,26 @@ static void sprinkler_thread_entry(void* p)
 		}
 		return (int)idx;
 	};
-	menu_ctx.moisture.getter     = [&]() -> uint8_t { return moisture_p ? moisture_p->getMoisture() : 0; };
-	menu_ctx.moisture.raw_getter = [&]() -> int      { return moisture_p ? moisture_p->getLatestRaw() : -1; };
-	menu_ctx.moisture.temp_getter = [&](float *t) -> bool { return moisture_p && moisture_p->readTemperature(t); };
-	menu_ctx.moisture.cal_setter = [&](int dry, int wet) { if (moisture_p) moisture_p->setCal(dry, wet); };
-	menu_ctx.moisture.thr_getter = [&]() -> uint8_t  { return moisture_p ? moisture_p->getThreshold() : 50; };
-	menu_ctx.moisture.thr_setter = [&](uint8_t val)  { if (moisture_p) moisture_p->setThreshold(val); };
+	menu_ctx.probes.ch_moisture = [](int ch) -> float { return s_valves[ch] ? s_valves[ch]->moisture() : -1.0f; };
+	menu_ctx.probes.ch_temp     = [](int ch, float *t) -> bool { return zone_soil_temp(ch, t); };
+	menu_ctx.probes.list        = []() -> std::vector<MenuCtx::ProbeSummary>
+	{
+		std::vector<MenuCtx::ProbeSummary> out;
+		for (const auto &p : s_probes.list())
+		{
+			MenuCtx::ProbeSummary ps{};
+			ps.addr = p.addr;
+			snprintf(ps.name, sizeof(ps.name), "%s", p.name);
+			ps.online        = p.r.online;
+			ps.in_bootloader = p.r.in_bootloader;
+			ps.calibrated    = !(p.r.status & probe_reg::ST_UNCALIBRATED);
+			ps.temp_ok       = !(p.r.status & probe_reg::ST_NTC_FAULT);
+			ps.moisture      = p.r.moisture / 100.0f;
+			ps.temp          = p.r.temp / 100.0f;
+			out.push_back(ps);
+		}
+		return out;
+	};
 	menu_ctx.valves.active = [](int ch) -> bool { return s_valves[ch] ? s_valves[ch]->isActive() : false; };
 	menu_ctx.valves.toggle = [](int ch, uint32_t dur_s)
 	{
@@ -577,15 +705,34 @@ static void sprinkler_thread_entry(void* p)
 	 */
 	esp_event_handler_register(HAP_EVENT, ESP_EVENT_ANY_ID, &sprinkler_hap_event_handler, NULL);
 
-	/* Start moisture trend logging (hourly; reads the filtered values from MoistInput) */
-	s_mtrend.start([&]() -> int { return moisture_p ? moisture_p->getAvgRaw() : -1; },
-	               [&](float *t) -> bool { return moisture_p && moisture_p->readTemperature(t); });
+	/* Start moisture trend logging (hourly; each zone's probe) */
+	s_mtrend.start([](int ch) -> float { return s_valves[ch] ? s_valves[ch]->moisture() : -1.0f; },
+	               [](int ch, float *t) -> bool { return zone_soil_temp(ch, t); });
 
 	/* Start the schedule checker */
 	s_sched.start();
 
 	/* After all the initializations are done, start the HAP core */
 	hap_start();
+
+	/* HomeKit caches the accessory database by configuration number, which the SDK only bumps when
+	 * the firmware version changes. Bump it when the set of probe services changed since last boot. */
+	{
+		nvs_handle_t h;
+		uint32_t     old_sig = 0;
+		if (nvs_open("storage", NVS_READWRITE, &h) == ESP_OK)
+		{
+			nvs_get_u32(h, "hap_probe_sig", &old_sig);
+			if (old_sig != probe_sig)
+			{
+				ESP_LOGI(TAG, "Probe services changed, updating HomeKit configuration number");
+				hap_update_config_number();
+				nvs_set_u32(h, "hap_probe_sig", probe_sig);
+				nvs_commit(h);
+			}
+			nvs_close(h);
+		}
+	}
 	/* The task ends here. The read/write callbacks will be invoked by the HAP Framework */
 	vTaskDelete(NULL);
 }

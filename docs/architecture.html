@@ -100,7 +100,7 @@
     <h2>System overview</h2>
     <figure>
       <div class="scroll">
-        <svg viewBox="0 0 1270 530" role="img" aria-label="System overview: two I2C buses connect the display, IO expander and soil sensor to firmware tasks; valve channels drive the IO expander; HomeKit and a web server on port 8080 expose the firmware to the Home app and a browser.">
+        <svg viewBox="0 0 1270 530" role="img" aria-label="System overview: an I2C bus connects the display and IO expander, an RS485 bus connects the soil probes to the probe manager; valve channels drive the IO expander; HomeKit and a web server on port 8080 expose the firmware to the Home app and a browser.">
           <defs>
             <marker id="ov-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0,0 L10,5 L0,10 z" class="tip"/>
@@ -140,10 +140,10 @@
           <line class="edge" x1="200" y1="192" x2="200" y2="234" marker-end="url(#ov-arrow)"/>
 
           <rect class="group-a" x="24" y="310" width="242" height="110" rx="8"/>
-          <text class="m" x="36" y="328" style="fill: var(--accent)">I2C bus 1 · GPIO13/14 · 50 kHz</text>
+          <text class="m" x="36" y="328" style="fill: var(--accent)">RS485 · UART2 · 9600 8N2</text>
           <rect class="box-a" x="40" y="340" width="210" height="56" rx="6"/>
-          <text class="t" x="145" y="363" text-anchor="middle">Soil sensor</text>
-          <text class="s" x="145" y="381" text-anchor="middle">Adafruit STEMMA · 0x36</text>
+          <text class="t" x="145" y="363" text-anchor="middle">Soil probes · up to 8</text>
+          <text class="s" x="145" y="381" text-anchor="middle">STM32 · Modbus RTU · addr 1–247</text>
 
           <!-- ===== Firmware ===== -->
           <rect class="fw" x="340" y="48" width="470" height="462" rx="10"/>
@@ -165,8 +165,8 @@
           <text class="s" x="695" y="225" text-anchor="middle">last 256 events</text>
 
           <rect class="box-a" x="370" y="334" width="190" height="52" rx="6"/>
-          <text class="t" x="465" y="355" text-anchor="middle">Moisture input</text>
-          <text class="s" x="465" y="373" text-anchor="middle">sampling task · every 15 s</text>
+          <text class="t" x="465" y="355" text-anchor="middle">Probe manager</text>
+          <text class="s" x="465" y="373" text-anchor="middle">poll task · every 10 s</text>
 
           <rect class="box" x="600" y="334" width="190" height="52" rx="6"/>
           <text class="t" x="695" y="355" text-anchor="middle">Moisture trend</text>
@@ -174,7 +174,7 @@
 
           <rect class="box" x="370" y="440" width="420" height="50" rx="6"/>
           <text class="t" x="580" y="461" text-anchor="middle">NVS flash</text>
-          <text class="s" x="580" y="479" text-anchor="middle">schedules · calibration · threshold · timezone · event log · trend</text>
+          <text class="s" x="580" y="479" text-anchor="middle">schedules · zone probe + threshold · probe list · timezone · log · trend</text>
 
           <!-- hardware ↔ firmware -->
           <path class="edge" d="M370,98 H252" marker-end="url(#ov-arrow)"/>
@@ -187,7 +187,7 @@
           <text class="lbl" x="328" y="205" text-anchor="middle">on / off</text>
 
           <path class="edge-a" d="M250,368 H368" marker-end="url(#ov-arrow-a)"/>
-          <text class="lbl-a" x="310" y="360" text-anchor="middle">read · 15 s</text>
+          <text class="lbl-a" x="310" y="360" text-anchor="middle">Modbus · 10 s</text>
 
           <!-- inside firmware -->
           <path class="edge" d="M650,130 V158 H520 V184" marker-end="url(#ov-arrow)"/>
@@ -197,14 +197,14 @@
           <text class="lbl" x="580" y="205" text-anchor="middle">logs</text>
 
           <path class="edge-a" d="M465,334 V240" marker-end="url(#ov-arrow-a)"/>
-          <text class="lbl-a" x="473" y="284">moisture %</text>
+          <text class="lbl-a" x="473" y="284">zone probe %</text>
           <text class="lbl" x="473" y="298">skip run if wet</text>
 
           <path class="edge-a" d="M560,360 H598" marker-end="url(#ov-arrow-a)"/>
           <text class="lbl-a" x="580" y="353" text-anchor="middle">%, °C</text>
 
           <path class="edge" d="M465,386 V438" marker-end="url(#ov-arrow)"/>
-          <text class="lbl" x="473" y="417">calibration</text>
+          <text class="lbl" x="473" y="417">probe list</text>
           <path class="edge" d="M695,386 V438" marker-end="url(#ov-arrow)"/>
           <text class="lbl" x="703" y="417">saves</text>
           <path class="edge" d="M790,212 H800 V465 H792" marker-end="url(#ov-arrow)"/>
@@ -214,14 +214,14 @@
           <rect class="box" x="880" y="78" width="220" height="104" rx="6"/>
           <text class="t" x="896" y="100">HomeKit (HAP)</text>
           <text class="s" x="896" y="122">2 × irrigation valve</text>
-          <text class="s" x="896" y="140">"Soil Moisture" sensor</text>
+          <text class="s" x="896" y="140">humidity + temp per probe</text>
           <text class="s" x="896" y="158">firmware update</text>
 
           <rect class="box" x="880" y="210" width="220" height="104" rx="6"/>
           <text class="t" x="896" y="232">Web server · port 8080</text>
-          <text class="m" x="896" y="254">/control · /api/*</text>
+          <text class="m" x="896" y="254">/control · /probes · /api/*</text>
           <text class="m" x="896" y="272">/update  (OTA upload)</text>
-          <text class="s" x="896" y="292">status, schedules, log, trend</text>
+          <text class="s" x="896" y="292">status, probes, log, trend</text>
 
           <rect class="box" x="880" y="340" width="220" height="70" rx="6"/>
           <text class="t" x="896" y="362">Wi-Fi station</text>
@@ -260,16 +260,16 @@
           <text class="lbl" x="1125" y="367" text-anchor="middle">NTP</text>
         </svg>
       </div>
-      <figcaption>The display and IO expander share I2C bus 0. The soil sensor has its own bus so their traffic stays off its lines. Valves are switched through the IO expander. HomeKit and the web page both reach the same valve channels and moisture values.</figcaption>
+      <figcaption>The display and IO expander share I2C bus 0. Soil probes hang off an RS485 bus and are polled by the probe manager; each zone can be assigned one probe. Valves are switched through the IO expander. HomeKit and the web pages reach the same valve channels and probe readings.</figcaption>
     </figure>
   </section>
 
   <section>
     <h2>Moisture reading path</h2>
-    <p>One task reads the sensor every 15 seconds and keeps the results. Everything else reads those stored values, so the sensor is never accessed from two places at once and the I2C bus stays quiet.</p>
+    <p>Each probe measures and calibrates itself. The probe task polls every configured probe every 10 seconds over Modbus and keeps the results. Everything else reads those stored values; only the probe task and the commands from the <code>/probes</code> page (calibrate, change address, firmware update) use the bus, one transaction at a time.</p>
     <figure>
       <div class="scroll">
-        <svg viewBox="0 0 1110 400" role="img" aria-label="Moisture reading path: the STEMMA sensor is read over I2C bus 1 by the StemmaSoil driver, called every 15 seconds by the sampling task, which stores the latest raw reading, a 16-reading average and the soil temperature; the screen, web page, HomeKit, schedules, calibration and trend log only read those stored values.">
+        <svg viewBox="0 0 1110 400" role="img" aria-label="Moisture reading path: soil probes are read over RS485 Modbus by the Modbus master, called every 10 seconds by the probe task, which stores moisture, soil temperature and status per probe; the screen, web pages, HomeKit, schedules and trend log only read those stored values.">
           <defs>
             <marker id="mp-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0,0 L10,5 L0,10 z" class="tip"/>
@@ -279,67 +279,68 @@
             </marker>
           </defs>
 
-          <rect class="box-a" x="20" y="170" width="150" height="64" rx="6"/>
-          <text class="t" x="95" y="197" text-anchor="middle">Soil sensor</text>
-          <text class="s" x="95" y="215" text-anchor="middle">STEMMA · 0x36</text>
+          <rect class="box-a" x="20" y="164" width="150" height="76" rx="6"/>
+          <text class="t" x="95" y="190" text-anchor="middle">Soil probes</text>
+          <text class="s" x="95" y="208" text-anchor="middle">own calibration</text>
+          <text class="s" x="95" y="224" text-anchor="middle">+ temp compensation</text>
 
           <path class="edge-a" d="M228,202 H172" marker-start="url(#mp-arrow-a)" marker-end="url(#mp-arrow-a)"/>
-          <text class="lbl-a" x="200" y="194" text-anchor="middle">I2C bus 1</text>
+          <text class="lbl-a" x="200" y="194" text-anchor="middle">RS485</text>
 
           <rect class="box" x="230" y="150" width="200" height="104" rx="6"/>
-          <text class="t" x="246" y="174">StemmaSoil driver</text>
-          <text class="s" x="246" y="196">50 kHz, 10 ms clock stretch</text>
-          <text class="s" x="246" y="214">on error: reset the bus,</text>
-          <text class="s" x="246" y="232">then pause 5 s</text>
+          <text class="t" x="246" y="174">Modbus master</text>
+          <text class="s" x="246" y="196">UART2 half duplex, DE on RTS</text>
+          <text class="s" x="246" y="214">one transaction at a time;</text>
+          <text class="s" x="246" y="232">offline after 3 missed polls</text>
 
           <path class="edge-a" d="M488,202 H432" marker-end="url(#mp-arrow-a)"/>
-          <text class="lbl-a" x="460" y="194" text-anchor="middle">every 15 s</text>
+          <text class="lbl-a" x="460" y="194" text-anchor="middle">every 10 s</text>
 
           <rect class="box-a" x="490" y="164" width="170" height="76" rx="6"/>
-          <text class="t" x="575" y="196" text-anchor="middle">Sampling task</text>
-          <text class="s" x="575" y="214" text-anchor="middle">the only sensor reader</text>
+          <text class="t" x="575" y="196" text-anchor="middle">Probe task</text>
+          <text class="s" x="575" y="214" text-anchor="middle">polls · scan · fw update</text>
 
           <path class="edge-a" d="M662,202 H708" marker-end="url(#mp-arrow-a)"/>
           <text class="lbl-a" x="685" y="194" text-anchor="middle">stores</text>
 
           <rect class="box" x="710" y="110" width="180" height="184" rx="6"/>
-          <text class="t" x="726" y="136">Latest values</text>
+          <text class="t" x="726" y="136">Latest values, per probe</text>
           <line class="div" x1="710" y1="150" x2="890" y2="150"/>
-          <text class="s" x="726" y="170" style="fill: currentColor">Latest raw reading</text>
-          <text class="m" x="726" y="186">one 15 s sample</text>
+          <text class="s" x="726" y="170" style="fill: currentColor">Moisture %</text>
+          <text class="m" x="726" y="186">calibrated on the probe</text>
           <line class="div" x1="710" y1="196" x2="890" y2="196"/>
-          <text class="s" x="726" y="216" style="fill: currentColor">Moisture average</text>
-          <text class="m" x="726" y="232">last 16 · about 4 min</text>
+          <text class="s" x="726" y="216" style="fill: currentColor">Soil temperature</text>
+          <text class="m" x="726" y="232">°C, NTC on the blade</text>
           <line class="div" x1="710" y1="242" x2="890" y2="242"/>
-          <text class="s" x="726" y="262" style="fill: currentColor">Soil temperature</text>
-          <text class="m" x="726" y="278">°C, ±2 °C</text>
+          <text class="s" x="726" y="262" style="fill: currentColor">Status · versions</text>
+          <text class="m" x="726" y="278">online, calibrated, fw</text>
 
           <!-- readers -->
           <text class="head" x="950" y="16">READ ONLY</text>
 
           <rect class="box" x="950" y="24" width="150" height="46" rx="6"/>
           <text class="t" x="964" y="43">Screen</text>
-          <text class="s" x="964" y="60">0.5 s · %, °C</text>
+          <text class="s" x="964" y="60">0.5 s · zone %, °C</text>
 
           <rect class="box" x="950" y="86" width="150" height="46" rx="6"/>
-          <text class="t" x="964" y="105">Web page</text>
-          <text class="s" x="964" y="122">2 s · %, raw, °C</text>
+          <text class="t" x="964" y="105">Web pages</text>
+          <text class="s" x="964" y="122">2 s · zones, probes</text>
 
           <rect class="box" x="950" y="148" width="150" height="46" rx="6"/>
           <text class="t" x="964" y="167">HomeKit</text>
-          <text class="s" x="964" y="184">on request · %</text>
+          <text class="s" x="964" y="184">each poll · %, °C</text>
 
           <rect class="box" x="950" y="210" width="150" height="46" rx="6"/>
           <text class="t" x="964" y="229">Schedules</text>
-          <text class="s" x="964" y="246">at start · % vs limit</text>
+          <text class="s" x="964" y="246">at start · zone % vs limit</text>
 
           <rect class="box" x="950" y="272" width="150" height="46" rx="6"/>
-          <text class="t" x="964" y="291">Calibration</text>
-          <text class="s" x="964" y="308">latest raw</text>
+          <text class="t" x="964" y="291">OLED probe list</text>
+          <text class="s" x="964" y="308">1 s · all probes</text>
 
           <rect class="box" x="950" y="334" width="150" height="46" rx="6"/>
           <text class="t" x="964" y="353">Trend log</text>
-          <text class="s" x="964" y="370">hourly · %, °C</text>
+          <text class="s" x="964" y="370">hourly · both zones</text>
 
           <path class="edge" d="M892,202 L948,47"  marker-end="url(#mp-arrow)"/>
           <path class="edge" d="M892,202 L948,109" marker-end="url(#mp-arrow)"/>
@@ -349,7 +350,7 @@
           <path class="edge" d="M892,202 L948,357" marker-end="url(#mp-arrow)"/>
         </svg>
       </div>
-      <figcaption>The intervals on the right are how often each reader asks; asking more often only returns the same stored values. Calibration uses the latest single reading so it reacts within 15 s, while everything else uses the 4-minute average to smooth out sensor noise.</figcaption>
+      <figcaption>The intervals on the right are how often each reader asks; asking more often only returns the same stored values. A reading counts as usable for watering while the probe answers, is calibrated and was read in the last minute; otherwise the zone waters as scheduled.</figcaption>
     </figure>
   </section>
 
@@ -359,16 +360,16 @@
       <table>
         <thead><tr><th>Block</th><th>Source</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td>Startup and wiring</td><td><code>main/app_main.cpp</code></td><td>Creates both I2C buses, connects callbacks between modules, sets up the HomeKit accessory.</td></tr>
-          <tr><td>Soil sensor driver</td><td><code>components/input/StemmaSoil.*</code></td><td>Seesaw protocol, address search at boot, bus reset and back-off after errors.</td></tr>
-          <tr><td>Moisture input</td><td><code>components/input/MoistInput.*</code></td><td>15 s sampling task, 16-reading average, calibration and threshold.</td></tr>
-          <tr><td>Valve channels</td><td><code>main/ValveChannel.*</code></td><td>Timed runs, HomeKit valve services, moisture skip.</td></tr>
+          <tr><td>Startup and wiring</td><td><code>main/app_main.cpp</code></td><td>Creates the I2C bus, starts the probe bus, connects callbacks between modules, sets up the HomeKit accessory (a humidity + temperature sensor per probe).</td></tr>
+          <tr><td>Modbus master</td><td><code>components/probe/ModbusMaster.*</code></td><td>Modbus RTU over the RS485 UART, one transaction at a time.</td></tr>
+          <tr><td>Probe manager</td><td><code>components/probe/ProbeManager.*</code></td><td>Probe list (NVS), 10 s poll task, bus scan, calibration commands, address change, firmware update through the probe bootloader.</td></tr>
+          <tr><td>Valve channels</td><td><code>main/ValveChannel.*</code>, <code>components/output</code></td><td>Timed runs, HomeKit valve services, zone probe and moisture skip threshold.</td></tr>
           <tr><td>Scheduler</td><td><code>main/Scheduler.*</code></td><td>Two events per channel, checked every 10 s.</td></tr>
-          <tr><td>Event log · trend</td><td><code>main/EventLog.*</code>, <code>main/MoistureTrend.*</code></td><td>Ring buffers saved to NVS (<code>evtlog</code>, <code>mtrend</code>).</td></tr>
-          <tr><td>Web server</td><td><code>main/WebBase.*</code>, <code>main/ControlServer.*</code>, <code>main/OtaServer.*</code></td><td>One HTTP server on port 8080; control page, JSON API and firmware upload.</td></tr>
+          <tr><td>Event log · trend</td><td><code>main/EventLog.*</code>, <code>main/MoistureTrend.*</code></td><td>Ring buffers saved to NVS (<code>evtlog</code>, <code>mtrend</code>); the trend keeps both zones' moisture and temperature.</td></tr>
+          <tr><td>Web server</td><td><code>main/WebBase.*</code>, <code>main/ControlServer.*</code>, <code>main/ProbeServer.*</code>, <code>main/OtaServer.*</code></td><td>One HTTP server on port 8080; control page, probe page, JSON API and firmware upload.</td></tr>
           <tr><td>Wi-Fi</td><td><code>main/app_wifi_handler.cpp</code></td><td>BLE provisioning, station mode, SNTP.</td></tr>
           <tr><td>Screen and buttons</td><td><code>components/ui</code>, <code>components/oled</code>, <code>components/ioexp</code></td><td>Home screen, menus, SSD1306 driver, MCP23017 driver.</td></tr>
-          <tr><td>Pin map</td><td><code>components/iocfg/iocfg.h</code></td><td>I2C pins for both buses, sensor type and address.</td></tr>
+          <tr><td>Pin map</td><td><code>components/iocfg/iocfg.h</code>, menuconfig</td><td>I2C pins in <code>iocfg.h</code>; RS485 UART, pins, baud and poll interval under menuconfig "Soil probes (RS485)".</td></tr>
         </tbody>
       </table>
     </div>
@@ -378,7 +379,9 @@
     <h2>Things to know</h2>
     <ul class="notes">
       <li>The firmware runs on one CPU core, so a task that never yields can starve the others, including Wi-Fi and HomeKit.</li>
-      <li>If the soil sensor is not found at boot it is not searched for again until the next reboot.</li>
+      <li>New probes all answer on address 1: add them one at a time on <code>/probes</code> and change the address before connecting the next.</li>
+      <li>Probes added or removed show up in the Home app after the controller restarts.</li>
+      <li>A probe firmware update pauses polling for about 30 s; the image is staged in the spare OTA partition, so controller OTA uploads are refused meanwhile.</li>
       <li>A reboot caused by a crash is recorded in the event log with its reset reason, shown on the web page.</li>
       <li>The web server's startup log mentions port 8081, but the control page is served by the shared server on 8080.</li>
     </ul>

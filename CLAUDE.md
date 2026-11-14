@@ -23,19 +23,20 @@ VSCode tasks (`.vscode/tasks.json`) also provide these as task shortcuts.
 ## Architecture
 
 ### Application Entry Point (`main/`)
-- `app_main.cpp` — Initializes all hardware (I2C, OLED, MCP23017, ADC), creates UI, configures HAP accessory (name: "Sprinkler", model: S1, CID: HAP_CID_SPRINKLER), registers HAP read/write callbacks. Note: `hap_start()` and `app_wifi_handler_start()` are currently commented out pending feature completion.
+- `app_main.cpp` — Initializes all hardware (I2C, OLED, MCP23017, RS485 probe bus), creates UI, configures HAP accessory (name: "Sprinkler", model: S1, CID: HAP_CID_SPRINKLER), registers HAP read/write callbacks. Each configured soil probe becomes a HomeKit humidity sensor + temperature sensor (created at boot; the HAP config number is bumped when the probe set changes). Note: `hap_start()` and `app_wifi_handler_start()` are currently commented out pending feature completion.
 - `app_wifi_handler.cpp` — WiFi provisioning via BLE (with QR code) or SoftAP, plus hardcoded credential fallback for development.
+- Web (port 8080, `WebBase` owns the httpd): `/control` (`ControlServer`), `/update` (`OtaServer`), `/probes` (`ProbeServer`: probe list, live readings, calibration, address change, bus scan, zone→probe assignment + thresholds, probe firmware update).
 
 ### Components (`components/`)
 
 | Component | Purpose |
 |-----------|---------|
-| `output/` | `OutputChannel` (single valve, 2 scheduled events) + `OutputChannels` (2-channel container). Settings persisted to NVS namespace "storage". |
-| `input/` | `MoistInput` — ADC Unit 1 Ch 0 for soil moisture. Currently returns hardcoded 0; ADC init is wired but read is not implemented. |
-| `ui/` | Screen-based UI: `HomeScreen`, `SettingsMenu`, `EvtTimeScreen`, `MoistThrScreen`. `UI` class manages button events and screen transitions. |
+| `output/` | `OutputChannel` (single valve, 2 scheduled events, assigned probe address + moisture skip threshold) + `OutputChannels` (2-channel container). Settings persisted to NVS namespace "storage". |
+| `probe/` | RS485 soil moisture probes (repo `mikegormack/soil-moisture-probe`). `ModbusMaster` — Modbus RTU master on a half-duplex UART (DE on RTS). `ProbeManager` — probe list (max 8, NVS key "probes"), poll task, scan, calibration commands, address change, firmware update job (image staged in the inactive OTA partition). `probe_reg` mirrors the probe's register map. |
+| `ui/` | Screen-based UI: `HomeScreen`, `SettingsMenu`, `EvtTimeScreen`, `MoistThrScreen` (per zone), `ProbesScreen`. `UI` class manages button events and screen transitions. |
 | `ioexp/` | `MCP23017` — I2C I/O expander driver (addr 0x20, reset GPIO 25, IRQ GPIO 26). Buttons on port A pins 8–11 (SEL, BACK, UP, DOWN). |
 | `oled/` | `SSD1306I2C` — 128×64 OLED display driver (addr 0x3C). |
-| `iocfg/` | Pin definitions: SDA=GPIO5, SCL=GPIO4, I2C_FREQ=400kHz. |
+| `iocfg/` | Pin definitions: SDA=GPIO5, SCL=GPIO4, I2C_FREQ=400kHz. RS485 pins are in menuconfig "Soil probes (RS485)": UART2, TX=GPIO17, RX=GPIO16, DE=GPIO18, 9600 8N2, poll 10 s. |
 | `qrcodegen/` | QR code generation for WiFi provisioning (untracked, recently added). |
 
 ### HomeKit SDK
@@ -47,12 +48,19 @@ VSCode tasks (`.vscode/tasks.json`) also provide these as task shortcuts.
 - Custom partition table: `partitions_hap.csv`
 - HomeKit setup code configured via menuconfig (`Kconfig.projbuild`), default `111-22-333`
 
+### Soil probes
+- Probes are Modbus slaves at 9600 8N2, default address 1. Add one new probe at a time on `/probes`, then change its address.
+- A zone with a probe skips scheduled runs while moisture ≥ its threshold; without a usable reading (offline, uncalibrated, stale, in bootloader) it waters as scheduled and logs `SCHED_NO_PROBE`.
+- Firmware update: upload the probe's `build/firmware/soil_probe.bin` on `/probes`. Uses the bootloader on the probe repo's `develop` branch (firmware ≥ 1.1, bootloader flashed once over SWD): app at 0x08001800, max 24 KB, 128-byte chunks, bootloader reports version 0xB0xx in input reg 9. Protocol: probe `src/boot/boot_regs.h` + `tools/fwupdate.py`; keep `components/probe/ProbeManager.h` (`probe_reg`) in step with them.
+- Moisture trend (`main/MoistureTrend.*`, NVS `mtrend`/`zones`): hourly, 30 days, both zones' probe moisture (0.5 % steps) and soil temperature (0.5 °C steps) in 8-byte entries. `/control` charts it.
+- Registry components (json_parser, json_generator, jsmn, libsodium, mdns) come from the Espressif component registry via the component manager (`dependencies.lock`).
+
 ## Code Style
 
 Clang-format with LLVM style, 4-space indentation, 120-character line limit. See `.clang-format`.
 
 ## Known Incomplete Areas
 
-- `MoistInput::read()` returns hardcoded 0 — ADC reading not yet implemented
+- Probe support is untested on hardware (logic tested on the host against the probe's bootloader code)
 - `hap_start()` and `app_wifi_handler_start()` are commented out in `app_main.cpp`
 - Button-triggered factory reset / WiFi reset handlers are commented out

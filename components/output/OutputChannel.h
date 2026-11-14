@@ -28,8 +28,17 @@ public:
 	bool isSchedEnabled() const        { return m_sched_enabled; }
 	void setSchedEnabled(bool enabled) { m_sched_enabled = enabled; }
 
+	// Soil probe (Modbus address, 0 = none) whose moisture can skip scheduled runs of this zone,
+	// and the moisture % at or above which a scheduled run is skipped.
+	uint8_t getProbeAddr() const         { return m_probe_addr; }
+	void    setProbeAddr(uint8_t addr)   { m_probe_addr = addr; }
+	uint8_t getMoistThreshold() const    { return m_moist_thr; }
+	void    setMoistThreshold(uint8_t v) { m_moist_thr = v > 100 ? 100 : v; }
+
 private:
 	const char* m_name;
 	time_evt_t  m_evt[EVT_PER_CH];
 	bool        m_sched_enabled = true;
+	uint8_t     m_probe_addr    = 0;
+	uint8_t     m_moist_thr     = 50;
 };

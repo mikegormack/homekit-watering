@@ -111,6 +111,13 @@ esp_err_t OtaServer::update_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "OTA upload started, content_len=%d", req->content_len);
 
+    OtaServer *srv = static_cast<OtaServer *>(req->user_ctx);
+    if (srv && srv->partition_busy && srv->partition_busy())
+    {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "A probe firmware update is running, try again later");
+        return ESP_FAIL;
+    }
+
     const esp_partition_t *update_partition = esp_ota_get_next_update_partition(nullptr);
     if (!update_partition)
     {

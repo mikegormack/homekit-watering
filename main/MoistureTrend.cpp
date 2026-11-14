@@ -10,7 +10,8 @@
 
 static const char *TAG     = "MoistureTrend";
 static const char *NVS_NS  = "mtrend";
-static const char *NVS_KEY = "data";
+static const char *NVS_KEY     = "zones";  // per-zone probe readings
+static const char *NVS_KEY_OLD = "data";   // raw readings of the old single soil sensor, no longer used
 
 MoistureTrend::MoistureTrend()
     : m_mutex(xSemaphoreCreateMutex())
@@ -34,6 +35,17 @@ void MoistureTrend::load()
     size_t    sz  = sizeof(m_store);
     esp_err_t err = nvs_get_blob(h, NVS_KEY, &m_store, &sz);
     nvs_close(h);
+
+    // Free the space of the old single-sensor log (raw readings can't be turned into probe %)
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK)
+    {
+        if (nvs_erase_key(h, NVS_KEY_OLD) == ESP_OK)
+        {
+            nvs_commit(h);
+            ESP_LOGI(TAG, "Removed old single-sensor trend data");
+        }
+        nvs_close(h);
+    }
 
     if (err != ESP_OK || sz != sizeof(m_store))
     {
@@ -64,7 +76,7 @@ void MoistureTrend::save()
 
 void MoistureTrend::sample()
 {
-    if (!m_rg)
+    if (!m_mg)
         return;
 
     // Skip until SNTP has synced (year >= 2020)
@@ -72,15 +84,30 @@ void MoistureTrend::sample()
     if (ts < 1577836800u)
         return;
 
-    int raw = m_rg();
-
-    uint16_t temp_b = TEMP_NONE;
-    float    temp_c = 0;
-    if (m_tg && m_tg(&temp_c))
+    Entry e   = {};
+    e.ts      = ts;
+    bool any  = false;
+    for (int z = 0; z < ZONES; z++)
     {
-        int t10 = (int)(temp_c * 10.0f + (temp_c >= 0 ? 0.5f : -0.5f));
-        temp_b  = (uint16_t)(t10 + 0x8000);
+        float m     = m_mg(z);
+        e.moist[z]  = MOIST_NONE;
+        if (m >= 0)
+        {
+            int v      = (int)(m * 2.0f + 0.5f);
+            e.moist[z] = (uint8_t)(v > 200 ? 200 : v);
+            any        = true;
+        }
+        float t    = 0;
+        e.temp[z]  = TEMP_NONE;
+        if (m_tg && m_tg(z, &t))
+        {
+            int v     = (int)(t * 2.0f + (t >= 0 ? 0.5f : -0.5f));
+            e.temp[z] = (int8_t)(v < -127 ? -127 : v > 127 ? 127 : v);
+            any       = true;
+        }
     }
+    if (!any)
+        return;  // no zone has a probe reading: nothing worth storing
 
     xSemaphoreTake(m_mutex, portMAX_DELAY);
 
@@ -96,7 +123,7 @@ void MoistureTrend::sample()
         m_store.head = (m_store.head + 1) % MAX_ENTRIES;
     }
 
-    m_store.entries[idx] = {ts, (int16_t)raw, temp_b};
+    m_store.entries[idx] = e;
 
     if (++m_since_save >= SAVE_EVERY_N)
     {
@@ -105,10 +132,7 @@ void MoistureTrend::sample()
     }
 
     xSemaphoreGive(m_mutex);
-    if (temp_b != TEMP_NONE)
-        ESP_LOGI(TAG, "Trend sample: raw=%d temp=%.1fC", raw, temp_c);
-    else
-        ESP_LOGI(TAG, "Trend sample: raw=%d", raw);
+    ESP_LOGI(TAG, "Trend sample: CH1 %d CH2 %d (0.5 %% steps, 255 = none)", e.moist[0], e.moist[1]);
 }
 
 void MoistureTrend::timer_cb(void *arg)
@@ -116,9 +140,9 @@ void MoistureTrend::timer_cb(void *arg)
     static_cast<MoistureTrend *>(arg)->sample();
 }
 
-void MoistureTrend::start(RawGetterFn rg, TempGetterFn tg, int interval_s)
+void MoistureTrend::start(MoistGetterFn mg, TempGetterFn tg, int interval_s)
 {
-    m_rg = rg;
+    m_mg = mg;
     m_tg = tg;
 
     esp_timer_create_args_t args = {
@@ -160,19 +184,26 @@ int MoistureTrend::toJson(char *buf, int len)
     int n = 0;
     buf[n++] = '[';
 
-    // Oldest-first (chronological) for charting
+    // Oldest-first (chronological) for charting, compact rows to keep the page's buffer small:
+    // [ts, CH1 %, CH2 %, CH1 C, CH2 C], null where there was no reading
     for (int i = 0; i < m_store.count; i++)
     {
         int          idx = (m_store.head + i) % MAX_ENTRIES;
         const Entry &e   = m_store.entries[idx];
-        // "t" = soil temp in 0.1 C, left out when there's no reading
-        int w;
-        if (e.temp_b != TEMP_NONE)
-            w = snprintf(buf + n, len - n - 1, "%s{\"ts\":%lu,\"r\":%d,\"t\":%d}", i ? "," : "",
-                         (unsigned long)e.ts, (int)e.raw, (int)e.temp_b - 0x8000);
-        else
-            w = snprintf(buf + n, len - n - 1, "%s{\"ts\":%lu,\"r\":%d}", i ? "," : "",
-                         (unsigned long)e.ts, (int)e.raw);
+        char         v[ZONES * 2][8];
+        for (int z = 0; z < ZONES; z++)
+        {
+            if (e.moist[z] == MOIST_NONE)
+                snprintf(v[z], sizeof(v[z]), "null");
+            else
+                snprintf(v[z], sizeof(v[z]), "%d.%d", e.moist[z] / 2, (e.moist[z] & 1) * 5);
+            if (e.temp[z] == TEMP_NONE)
+                snprintf(v[ZONES + z], sizeof(v[z]), "null");
+            else
+                snprintf(v[ZONES + z], sizeof(v[z]), "%.1f", e.temp[z] / 2.0f);
+        }
+        int w = snprintf(buf + n, len - n - 1, "%s[%lu,%s,%s,%s,%s]", i ? "," : "", (unsigned long)e.ts, v[0], v[1],
+                         v[2], v[3]);
         if (w < 0 || w >= len - n - 1) break;
         n += w;
     }

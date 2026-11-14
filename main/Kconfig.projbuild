@@ -38,3 +38,39 @@ menu "Example Configuration"
             or "AEST-10AEDT,M10.1.0,M4.1.0/3". Applied via setenv("TZ",...).
 
 endmenu
+
+menu "Soil probes (RS485)"
+
+    config PROBE_UART_NUM
+        int "UART number"
+        range 1 2
+        default 2
+        help
+            UART used for the RS485 / Modbus RTU bus to the soil moisture probes. UART0 is the console.
+
+    config PROBE_UART_TX_GPIO
+        int "TX GPIO (to transceiver DI)"
+        default 17
+
+    config PROBE_UART_RX_GPIO
+        int "RX GPIO (from transceiver RO)"
+        default 16
+
+    config PROBE_UART_DE_GPIO
+        int "Driver enable GPIO (transceiver DE and /RE)"
+        default 18
+        help
+            Driven high while transmitting (UART RTS in RS485 half-duplex mode).
+
+    config PROBE_BAUD
+        int "Baud rate"
+        default 9600
+        help
+            Must match every probe on the bus (probe default 9600, 8N2).
+
+    config PROBE_POLL_INTERVAL_S
+        int "Poll interval (seconds)"
+        range 1 3600
+        default 10
+
+endmenu

@@ -39,9 +39,22 @@ void HomeScreen::update()
 
 		m_display.drawBitmap(112, 0, tool_icon16x16, 16, 16);
 
-		uint8_t moisture = m_menu_ctx.moisture.getter ? m_menu_ctx.moisture.getter() : 0;
-		m_display.drawBitmap(40, 44, moisture_icon16x16, 16, 16);
-		m_display.drawProgressBar(58, 48, 30, 6, moisture);
+		// Moisture of the shown channel's probe (nothing when the zone has no probe)
+		OutputChannel *out = m_menu_ctx.out_ch[m_channel];
+		if (out && out->getProbeAddr())
+		{
+			float moisture = m_menu_ctx.probes.ch_moisture ? m_menu_ctx.probes.ch_moisture(m_channel) : -1.0f;
+			m_display.drawBitmap(40, 44, moisture_icon16x16, 16, 16);
+			if (moisture >= 0)
+			{
+				m_display.drawProgressBar(58, 48, 30, 6, (uint8_t)moisture);
+			}
+			else
+			{
+				m_display.setFont(ArialMT_Plain_10);
+				m_display.drawString(60, 45, "--");
+			}
+		}
 
 		show_soil_temp();
 
@@ -111,8 +124,9 @@ void HomeScreen::show_wifi()
 
 void HomeScreen::show_soil_temp()
 {
+	// Soil temperature from the shown channel's probe
 	float temp_c = 0;
-	if (!m_menu_ctx.moisture.temp_getter || !m_menu_ctx.moisture.temp_getter(&temp_c))
+	if (!m_menu_ctx.probes.ch_temp || !m_menu_ctx.probes.ch_temp(m_channel, &temp_c))
 		return;
 
 	// Small, right-aligned in the bottom-right corner

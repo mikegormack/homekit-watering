@@ -24,18 +24,8 @@
 #define BTN_CH1_IOEXP_MASK  (1 << BTN_CH1_IOEXP_PIN)
 #define BTN_CH2_IOEXP_MASK  (1 << BTN_CH2_IOEXP_PIN)
 
-// Moisture sensor ADC input (GPIO39 = ADC1 channel 3)
-#define MOISTURE_ADC_UNIT    ADC_UNIT_1
-#define MOISTURE_ADC_CHANNEL ADC_CHANNEL_3
-
-// Moisture sensor type: 1 = Adafruit STEMMA soil sensor (I2C), 0 = analog sensor on the ADC pin above
-#define MOISTURE_USE_STEMMA  1
-#define MOISTURE_STEMMA_ADDR 0x36
-
-// The STEMMA sensor has its own I2C bus (second ESP32 I2C controller), kept apart
-// from the display and IO expander. STEMMA cable: blue = SDA, yellow = SCL.
-#define MOIST_I2C_SDA_PIN    GPIO_NUM_13
-#define MOIST_I2C_SCL_PIN    GPIO_NUM_15
+// RS485 soil probe bus: UART and pins are set in menuconfig ("Soil probes (RS485)"),
+// see CONFIG_PROBE_UART_* in main/Kconfig.projbuild.
 
 // Valve output pins (Port A, configured as outputs)
 #define VALVE_CH0_IOEXP_PIN  0

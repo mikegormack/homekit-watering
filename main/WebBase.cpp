@@ -24,6 +24,7 @@ static const char *BASE_HTML = R"html(<!DOCTYPE html>
 <body>
   <h1>&#127807; Sprinkler</h1>
   <a class="btn" href="/control">Valve Control &amp; Schedule</a>
+  <a class="btn" href="/probes">Soil Probes</a>
   <a class="btn" href="/update">Firmware Update</a>
 </body>
 </html>)html";
@@ -35,7 +36,7 @@ void WebBase::start()
     config.max_open_sockets  = 5;
     config.stack_size        = 8192;
     config.recv_wait_timeout = 30;   // needed for large OTA uploads
-    config.max_uri_handlers  = 20;
+    config.max_uri_handlers  = 28;   // base (1) + OTA (3) + control (16) + probes (5), with headroom
 
     if (httpd_start(&m_server, &config) != ESP_OK)
     {

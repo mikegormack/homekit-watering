@@ -17,6 +17,10 @@ enum class LogEvt : uint8_t {
     BOOT           = 0x0A,  // ch = 0xFF (system); value = esp_reset_reason_t
     CRASH          = 0x0B,  // ch = 0xFF (system); value = esp_reset_reason_t
     OTA_COMPLETE   = 0x0C,  // ch = 0xFF (system)
+    SCHED_NO_PROBE = 0x0D,  // scheduled run started without a moisture check; value = probe address
+    PROBE_OFFLINE  = 0x0E,  // ch = 0xFF; value = probe address
+    PROBE_ONLINE   = 0x0F,  // ch = 0xFF; value = probe address
+    PROBE_FW       = 0x10,  // ch = 0xFF; probe firmware updated; value = address << 8 | major << 4 | minor
 };
 
 class EventLog

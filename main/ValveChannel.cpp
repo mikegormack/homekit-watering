@@ -86,15 +86,21 @@ void ValveChannel::scheduledActivate(uint32_t duration_s)
         if (m_log) m_log->add((uint8_t)m_ch_num, LogEvt::SCHED_SKIP_DUR);
         return;
     }
-    if (m_moist_threshold_fn && m_moisture_fn)
+    if (getProbeAddr())
     {
-        float   moisture = m_moisture_fn();
-        uint8_t thr      = m_moist_threshold_fn();
-        if (moisture >= (float)thr)
+        float   pct = moisture();
+        uint8_t thr = getMoistThreshold();
+        if (pct < 0)
+        {
+            // No usable reading (offline, uncalibrated, stale): water anyway rather than let plants dry out.
+            ESP_LOGW(TAG, "CH%d probe %d unavailable, running without moisture check", m_ch_num, getProbeAddr());
+            if (m_log) m_log->add((uint8_t)m_ch_num, LogEvt::SCHED_NO_PROBE, getProbeAddr());
+        }
+        else if (pct >= (float)thr)
         {
             ESP_LOGI(TAG, "CH%d skip schedule: moisture %.1f >= threshold %d",
-                     m_ch_num, moisture, (int)thr);
-            if (m_log) m_log->add((uint8_t)m_ch_num, LogEvt::SCHED_SKIP_MOI, (uint16_t)moisture);
+                     m_ch_num, pct, (int)thr);
+            if (m_log) m_log->add((uint8_t)m_ch_num, LogEvt::SCHED_SKIP_MOI, (uint16_t)pct);
             return;
         }
     }

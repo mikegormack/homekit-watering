@@ -13,7 +13,7 @@ set (req
 	app_hap_setup_payload
 	ui
 	output
-	input
+	probe
 	qrcodegen
 	esp_http_server
 	app_update
@@ -36,6 +36,7 @@ set (srcs
 	WebBase.cpp
 	EventLog.cpp
 	MoistureTrend.cpp
+	ProbeServer.cpp
 )
 
 idf_component_register(

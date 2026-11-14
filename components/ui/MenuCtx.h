@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <OutputChannel.h>
 
@@ -18,18 +19,28 @@ public:
 		char ip[16];
 	};
 
+	// Snapshot of one RS485 soil probe for display.
+	struct ProbeSummary
+	{
+		uint8_t addr;
+		char    name[16];
+		bool    online;
+		bool    in_bootloader;
+		bool    calibrated;
+		bool    temp_ok;
+		float   moisture;  // %
+		float   temp;      // degC
+	};
+
 	// --- type aliases -------------------------------------------------------
 	using StartProvFn      = std::function<std::unique_ptr<uint8_t[]>()>;
 	using StopProvFn       = std::function<void()>;
 	using ProvStatusFn     = std::function<ProvStatus()>;
 	using WifiInfoFn       = std::function<WifiInfo()>;
 	using RssiGetterFn     = std::function<int8_t()>;
-	using MoistGetterFn    = std::function<uint8_t()>;
-	using MoistRawGetterFn = std::function<int()>;
-	using MoistTempGetterFn = std::function<bool(float *temp_c)>;
-	using MoistCalSetterFn = std::function<void(int dry, int wet)>;
-	using MoistThrGetterFn = std::function<uint8_t()>;
-	using MoistThrSetterFn = std::function<void(uint8_t)>;
+	using ProbeListFn      = std::function<std::vector<ProbeSummary>()>;
+	using ChMoistureFn     = std::function<float(int ch)>;  // % from the zone's probe, < 0 if unavailable
+	using ChTempFn         = std::function<bool(int ch, float *temp_c)>;  // zone probe soil temperature
 	using TzGetterFn       = std::function<int()>;
 	using TzSetterFn       = std::function<void(int)>;
 	using HapIsPairedFn      = std::function<bool()>;
@@ -49,15 +60,12 @@ public:
 		RssiGetterFn   rssi_getter;
 	} wifi;
 
-	struct Moisture
+	struct Probes
 	{
-		MoistGetterFn    getter;
-		MoistRawGetterFn raw_getter;
-		MoistTempGetterFn temp_getter;  // soil temperature, false if unavailable
-		MoistCalSetterFn cal_setter;
-		MoistThrGetterFn thr_getter;
-		MoistThrSetterFn thr_setter;
-	} moisture;
+		ProbeListFn  list;
+		ChMoistureFn ch_moisture;
+		ChTempFn     ch_temp;
+	} probes;
 
 	struct Hap
 	{
@@ -81,6 +89,6 @@ public:
 		TzSetterFn tz_setter;
 	} settings;
 
-	// Pointers to the two valve channels (as OutputChannel for schedule editing)
+	// Pointers to the two valve channels (as OutputChannel for schedule, probe and threshold settings)
 	OutputChannel *out_ch[2] = {nullptr, nullptr};
 };
