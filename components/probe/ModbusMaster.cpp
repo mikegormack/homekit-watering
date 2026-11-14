@@ -3,6 +3,11 @@
 #include <string.h>
 #include <driver/gpio.h>
 #include <esp_log.h>
+#include <sdkconfig.h>
+#if CONFIG_IDF_TARGET_ESP32
+#include <esp_efuse.h>
+#include <soc/efuse_defs.h>
+#endif
 #include <freertos/task.h>
 
 static const char *TAG = "Modbus";
@@ -19,18 +24,47 @@ ModbusMaster::~ModbusMaster()
         vSemaphoreDelete(m_lock);
 }
 
+// Why a GPIO can't be used for the bus, or nullptr if it can. Taking over a flash or console pin
+// stops the chip (code fetch fails) or the log, and ends in a watchdog reset with no message.
+static const char *pin_problem(int gpio, bool output)
+{
+    if (!GPIO_IS_VALID_GPIO(gpio))
+        return "not a GPIO";
+    if (output && !GPIO_IS_VALID_OUTPUT_GPIO(gpio))
+        return "input-only (GPIO34-39)";
+#if CONFIG_IDF_TARGET_ESP32
+    if (gpio >= 6 && gpio <= 11)
+        return "wired to the SPI flash";
+    uint32_t pkg = esp_efuse_get_pkg_ver();
+    if ((gpio == 16 || gpio == 17) &&
+        (pkg == EFUSE_RD_CHIP_VER_PKG_ESP32PICOD4 || pkg == EFUSE_RD_CHIP_VER_PKG_ESP32D2WDQ5 ||
+         pkg == EFUSE_RD_CHIP_VER_PKG_ESP32PICOV302))
+        return "wired to the in-package flash/PSRAM on this chip (ESP32-PICO / D2WD)";
+#endif
+#if CONFIG_ESP_CONSOLE_UART_DEFAULT && CONFIG_ESP_CONSOLE_UART_NUM == 0
+    if (gpio == 1 || gpio == 3)
+        return "the serial console (UART0)";
+#endif
+    return nullptr;
+}
+
 bool ModbusMaster::begin(const Config &cfg)
 {
     m_cfg = cfg;
 
-    // Name the bad pin instead of the driver's generic "tx_io_num error" / "rts_io_num error".
-    if (!GPIO_IS_VALID_OUTPUT_GPIO(cfg.tx_gpio) || !GPIO_IS_VALID_OUTPUT_GPIO(cfg.de_gpio) ||
-        !GPIO_IS_VALID_GPIO(cfg.rx_gpio))
+    // Log the pins first, so a crash while they are switched over still shows them.
+    ESP_LOGI(TAG, "RS485 on UART%d: tx=%d rx=%d de=%d", (int)cfg.uart, cfg.tx_gpio, cfg.rx_gpio, cfg.de_gpio);
+    const struct { const char *name; int gpio; bool output; } pins[] = {
+        {"TX", cfg.tx_gpio, true}, {"RX", cfg.rx_gpio, false}, {"DE", cfg.de_gpio, true}};
+    for (const auto &p : pins)
     {
-        ESP_LOGE(TAG, "RS485 pins tx=%d rx=%d de=%d: TX and DE must be output-capable GPIOs (not 34-39), "
-                      "set them in menuconfig \"Soil probes (RS485)\"",
-                 cfg.tx_gpio, cfg.rx_gpio, cfg.de_gpio);
-        return false;
+        const char *why = pin_problem(p.gpio, p.output);
+        if (why)
+        {
+            ESP_LOGE(TAG, "RS485 %s pin GPIO%d can't be used: %s. Change it in menuconfig \"Soil probes (RS485)\"",
+                     p.name, p.gpio, why);
+            return false;
+        }
     }
 
     uart_config_t uc = {};
@@ -55,8 +89,7 @@ bool ModbusMaster::begin(const Config &cfg)
     }
 
     m_ready = true;
-    ESP_LOGI(TAG, "RS485 on UART%d tx=%d rx=%d de=%d %lu 8N2", (int)cfg.uart, cfg.tx_gpio, cfg.rx_gpio,
-             cfg.de_gpio, (unsigned long)cfg.baud);
+    ESP_LOGI(TAG, "RS485 ready, %lu 8N2", (unsigned long)cfg.baud);
     return true;
 }
 
