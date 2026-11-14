@@ -50,17 +50,25 @@ menu "Soil probes (RS485)"
 
     config PROBE_UART_TX_GPIO
         int "TX GPIO (to transceiver DI)"
+        range 0 33
         default 17
+        help
+            Must be able to drive an output: GPIO34-39 are input-only on the ESP32.
 
     config PROBE_UART_RX_GPIO
         int "RX GPIO (from transceiver RO)"
+        range 0 39
         default 16
+        help
+            Any GPIO, including the input-only GPIO34-39.
 
     config PROBE_UART_DE_GPIO
         int "Driver enable GPIO (transceiver DE and /RE)"
+        range 0 33
         default 18
         help
-            Driven high while transmitting (UART RTS in RS485 half-duplex mode).
+            Driven high while transmitting (UART RTS in RS485 half-duplex mode). Must be able to
+            drive an output: GPIO34-39 are input-only on the ESP32.
 
     config PROBE_BAUD
         int "Baud rate"

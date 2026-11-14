@@ -1,6 +1,7 @@
 #include "ModbusMaster.h"
 
 #include <string.h>
+#include <driver/gpio.h>
 #include <esp_log.h>
 #include <freertos/task.h>
 
@@ -21,6 +22,16 @@ ModbusMaster::~ModbusMaster()
 bool ModbusMaster::begin(const Config &cfg)
 {
     m_cfg = cfg;
+
+    // Name the bad pin instead of the driver's generic "tx_io_num error" / "rts_io_num error".
+    if (!GPIO_IS_VALID_OUTPUT_GPIO(cfg.tx_gpio) || !GPIO_IS_VALID_OUTPUT_GPIO(cfg.de_gpio) ||
+        !GPIO_IS_VALID_GPIO(cfg.rx_gpio))
+    {
+        ESP_LOGE(TAG, "RS485 pins tx=%d rx=%d de=%d: TX and DE must be output-capable GPIOs (not 34-39), "
+                      "set them in menuconfig \"Soil probes (RS485)\"",
+                 cfg.tx_gpio, cfg.rx_gpio, cfg.de_gpio);
+        return false;
+    }
 
     uart_config_t uc = {};
     uc.baud_rate  = (int)cfg.baud;
