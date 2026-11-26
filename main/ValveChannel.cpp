@@ -3,6 +3,7 @@
 #include "Scheduler.h"
 #include "EventLog.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <esp_log.h>
 
@@ -21,6 +22,8 @@ ValveChannel::ValveChannel(int ch_num, const char *hap_name, const char *nvs_key
       m_mutex(xSemaphoreCreateMutex()),
       m_log(nullptr)
 {
+    m_auto_name[0] = '\0';
+    setSchedChangedFn([this]() { onSchedEnabledChanged(); });
 }
 
 ValveChannel::~ValveChannel()
@@ -56,6 +59,32 @@ hap_serv_t *ValveChannel::createService()
 
     ESP_LOGI(TAG, "CH%d service created (default %lus)", m_ch_num, (unsigned long)m_set_duration);
     return m_service;
+}
+
+hap_serv_t *ValveChannel::createAutoSwitchService()
+{
+    snprintf(m_auto_name, sizeof(m_auto_name), "%s Auto", m_hap_name);
+    m_auto_service = hap_serv_switch_create(isSchedEnabled());
+    hap_serv_add_char(m_auto_service, hap_char_name_create(m_auto_name));
+    hap_serv_set_priv(m_auto_service, this);
+    hap_serv_set_read_cb(m_auto_service, auto_read_cb);
+    hap_serv_set_write_cb(m_auto_service, auto_write_cb);
+    return m_auto_service;
+}
+
+// Automatic mode changed (web page, screen, HomeKit): keep the HomeKit switch in step.
+void ValveChannel::onSchedEnabledChanged()
+{
+    ESP_LOGI(TAG, "CH%d automatic mode %s", m_ch_num, isSchedEnabled() ? "on" : "off");
+    if (m_log) m_log->add((uint8_t)m_ch_num, LogEvt::AUTO_MODE, isSchedEnabled() ? 1 : 0);
+    if (m_auto_service)
+    {
+        hap_val_t val;
+        val.b = isSchedEnabled();
+        hap_char_update_val(hap_serv_get_char_by_uuid(m_auto_service, HAP_CHAR_UUID_ON), &val);
+    }
+    if (m_auto_changed_fn)
+        m_auto_changed_fn();
 }
 
 void ValveChannel::registerWithScheduler(Scheduler &sched)
@@ -150,6 +179,8 @@ void ValveChannel::onActivate(uint32_t duration_s)
 
     ESP_LOGI(TAG, "CH%d activated (%lus)", m_ch_num, (unsigned long)duration_s);
     xSemaphoreGive(m_mutex);
+    if (m_run_changed_fn)
+        m_run_changed_fn();
 }
 
 void ValveChannel::onDeactivate()
@@ -175,6 +206,8 @@ void ValveChannel::onDeactivate()
 
     ESP_LOGI(TAG, "CH%d deactivated", m_ch_num);
     xSemaphoreGive(m_mutex);
+    if (m_run_changed_fn)
+        m_run_changed_fn();
 }
 
 void ValveChannel::timer_cb(void *arg)
@@ -182,6 +215,7 @@ void ValveChannel::timer_cb(void *arg)
     ValveChannel *self = static_cast<ValveChannel *>(arg);
 
     xSemaphoreTake(self->m_mutex, portMAX_DELAY);
+    bool finished = false;
 
     if (self->m_remaining > 0)
         self->m_remaining = self->m_remaining - 1;
@@ -207,9 +241,12 @@ void ValveChannel::timer_cb(void *arg)
 
         if (self->m_log) self->m_log->add((uint8_t)self->m_ch_num, LogEvt::RUN_COMPLETE);
         ESP_LOGI(TAG, "CH%d run complete", self->m_ch_num);
+        finished = true;
     }
 
     xSemaphoreGive(self->m_mutex);
+    if (finished && self->m_run_changed_fn)
+        self->m_run_changed_fn();
 }
 
 int ValveChannel::hap_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_priv, void *read_priv)
@@ -261,6 +298,40 @@ int ValveChannel::hap_write_cb(hap_write_data_t *write_data, int count, void *se
         {
             self->m_set_duration = w->val.u;
             hap_char_update_val(w->hc, &w->val);
+            *(w->status) = HAP_STATUS_SUCCESS;
+        }
+        else
+        {
+            *(w->status) = HAP_STATUS_RES_ABSENT;
+        }
+    }
+    return HAP_SUCCESS;
+}
+
+int ValveChannel::auto_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_priv, void *read_priv)
+{
+    ValveChannel *self = static_cast<ValveChannel *>(serv_priv);
+    hap_val_t     val;
+    val.b = self->isSchedEnabled();
+    hap_char_update_val(hc, &val);
+    *status = HAP_STATUS_SUCCESS;
+    return HAP_SUCCESS;
+}
+
+int ValveChannel::auto_write_cb(hap_write_data_t *write_data, int count, void *serv_priv, void *write_priv)
+{
+    ValveChannel *self = static_cast<ValveChannel *>(serv_priv);
+    for (int i = 0; i < count; i++)
+    {
+        hap_write_data_t *w = &write_data[i];
+        if (!strcmp(hap_char_get_type_uuid(w->hc), HAP_CHAR_UUID_ON))
+        {
+            hap_char_update_val(w->hc, &w->val);
+            if (self->isSchedEnabled() != w->val.b)
+            {
+                self->setSchedEnabled(w->val.b);  // notifies through onSchedEnabledChanged()
+                self->save();
+            }
             *(w->status) = HAP_STATUS_SUCCESS;
         }
         else

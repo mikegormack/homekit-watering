@@ -19,6 +19,7 @@ class ValveChannel : public OutputChannel
 public:
     using MoistureFn    = std::function<float(uint8_t probe_addr)>;  // %, or < 0 when unavailable
     using OutputFn      = std::function<void(bool)>; // true = on, false = off
+    using NotifyFn      = std::function<void()>;
 
     // hap_name: shown in Home app; nvs_key: used for NVS schedule persistence
     ValveChannel(int ch_num, const char *hap_name, const char *nvs_key,
@@ -30,12 +31,20 @@ public:
     float moisture() const { return (getProbeAddr() && m_moisture_fn) ? m_moisture_fn(getProbeAddr()) : -1.0f; }
     void setOutputFn(OutputFn fn)            { m_output_fn = fn; }
     void setEventLog(EventLog &log)          { m_log = &log; }
+    // Called after the zone starts or stops running (any source), outside the zone's lock.
+    void setRunChangedFn(NotifyFn fn)        { m_run_changed_fn = fn; }
+    // Called after automatic mode (OutputChannel::setSchedEnabled) changes, from any source.
+    void setAutoChangedFn(NotifyFn fn)       { m_auto_changed_fn = fn; }
 
     // Register the two scheduled events (from OutputChannel::m_evt) with a Scheduler
     void registerWithScheduler(Scheduler &sched);
 
-    // Creates and returns the HAP service; call once before hap_add_accessory()
+    // Creates and returns the HAP valve service; call once before hap_add_accessory()
     hap_serv_t *createService();
+    hap_serv_t *service() const { return m_service; }
+
+    // Creates the HomeKit "<name> Auto" switch for automatic mode; call once, after createService()
+    hap_serv_t *createAutoSwitchService();
 
     bool     isActive()    const { return m_active; }
     uint32_t getRemaining() const { return m_remaining; }
@@ -52,6 +61,8 @@ private:
     const char        *m_hap_name;
     uint32_t           m_set_duration;
     hap_serv_t        *m_service;
+    hap_serv_t        *m_auto_service = nullptr;
+    char               m_auto_name[32];
     bool               m_active;
     uint32_t           m_remaining;
     esp_timer_handle_t m_timer;
@@ -59,6 +70,10 @@ private:
     MoistureFn         m_moisture_fn;
     OutputFn           m_output_fn;
     EventLog          *m_log;
+    NotifyFn           m_run_changed_fn;
+    NotifyFn           m_auto_changed_fn;
+
+    void onSchedEnabledChanged();
 
     void onActivate(uint32_t duration_s);
     void onDeactivate();
@@ -66,4 +81,6 @@ private:
     static void timer_cb(void *arg);
     static int  hap_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_priv, void *read_priv);
     static int  hap_write_cb(hap_write_data_t *write_data, int count, void *serv_priv, void *write_priv);
+    static int  auto_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_priv, void *read_priv);
+    static int  auto_write_cb(hap_write_data_t *write_data, int count, void *serv_priv, void *write_priv);
 };

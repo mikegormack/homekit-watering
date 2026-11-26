@@ -21,6 +21,7 @@ enum class LogEvt : uint8_t {
     PROBE_OFFLINE  = 0x0E,  // ch = 0xFF; value = probe address
     PROBE_ONLINE   = 0x0F,  // ch = 0xFF; value = probe address
     PROBE_FW       = 0x10,  // ch = 0xFF; probe firmware updated; value = address << 8 | major << 4 | minor
+    AUTO_MODE      = 0x11,  // automatic mode (schedule) switched; value = 1 on, 0 off
 };
 
 class EventLog

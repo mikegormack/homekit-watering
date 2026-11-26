@@ -203,7 +203,8 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
       4:'sched skip (dur=0)', 5:'sched skip (moisture)',
       6:'HomeKit start', 7:'HomeKit stop', 8:'run complete',
       9:'sched disabled', 10:'boot', 11:'crash', 12:'OTA complete',
-      13:'sched start (no probe reading)', 14:'probe offline', 15:'probe online', 16:'probe firmware updated'
+      13:'sched start (no probe reading)', 14:'probe offline', 15:'probe online', 16:'probe firmware updated',
+      17:'automatic mode'
     };
 
     function fmtDate(ts) {
@@ -227,6 +228,8 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
         extra = ' (' + m + 'min' + (s ? ' ' + s + 's' : '') + ')';
       } else if (e.type === 5) {
         extra = ' (moisture=' + e.val + '%)';
+      } else if (e.type === 17) {
+        extra = e.val ? ' on' : ' off';
       } else if (e.type >= 13 && e.type <= 15) {
         extra = ' (probe ' + e.val + ')';
       } else if (e.type === 16) {

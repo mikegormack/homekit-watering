@@ -112,6 +112,107 @@ struct ProbeHap
 };
 static std::vector<ProbeHap> s_probe_hap;
 
+/* ---- Irrigation System service ------------------------------------------------------------
+ * Primary service with both valves linked to it, so the Home app shows one sprinkler.
+ *   Active      : on while any zone is in automatic mode or running. Writing off stops running
+ *                 zones and turns automatic mode off for every zone; writing on turns it back on.
+ *   ProgramMode : 1 (scheduled) while any zone is in automatic mode, else 0.
+ *   InUse       : 1 while any zone is running.
+ * Per-zone automatic mode also has its own "<zone> Auto" switch (ValveChannel). */
+static hap_serv_t *s_irrigation = nullptr;
+
+/* Services added after the original ones get fixed instance IDs from here, so neither they nor
+ * the existing services are renumbered when probe sensors are added or removed (HomeKit keeps
+ * their names, rooms and automations). */
+#define HAP_IID_FIXED_BASE 2000
+
+static void set_fixed_iids(hap_serv_t *hs, int32_t &next)
+{
+	hap_serv_set_iid(hs, next++);
+	for (hap_char_t *hc = hap_serv_get_first_char(hs); hc; hc = hap_char_get_next(hc))
+		hap_char_set_iid(hc, next++);
+}
+
+static bool any_zone_auto()
+{
+	for (auto &v : s_valves)
+		if (v && v->isSchedEnabled())
+			return true;
+	return false;
+}
+
+static bool any_zone_running()
+{
+	for (auto &v : s_valves)
+		if (v && v->isActive())
+			return true;
+	return false;
+}
+
+static void irrigation_set(hap_char_t *hc)
+{
+	if (!hc)
+		return;
+	const char *uuid = hap_char_get_type_uuid(hc);
+	hap_val_t   val;
+	if (!strcmp(uuid, HAP_CHAR_UUID_ACTIVE))
+		val.u = (any_zone_auto() || any_zone_running()) ? 1 : 0;
+	else if (!strcmp(uuid, HAP_CHAR_UUID_PROGRAM_MODE))
+		val.u = any_zone_auto() ? 1 : 0;
+	else if (!strcmp(uuid, HAP_CHAR_UUID_IN_USE))
+		val.u = any_zone_running() ? 1 : 0;
+	else
+		return;
+	hap_char_update_val(hc, &val);
+}
+
+/* Called whenever a zone starts/stops or its automatic mode changes. */
+static void irrigation_update()
+{
+	if (!s_irrigation)
+		return;
+	irrigation_set(hap_serv_get_char_by_uuid(s_irrigation, HAP_CHAR_UUID_ACTIVE));
+	irrigation_set(hap_serv_get_char_by_uuid(s_irrigation, HAP_CHAR_UUID_PROGRAM_MODE));
+	irrigation_set(hap_serv_get_char_by_uuid(s_irrigation, HAP_CHAR_UUID_IN_USE));
+}
+
+static int irrigation_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_priv, void *read_priv)
+{
+	irrigation_set(hc);
+	*status = HAP_STATUS_SUCCESS;
+	return HAP_SUCCESS;
+}
+
+static int irrigation_write_cb(hap_write_data_t *write_data, int count, void *serv_priv, void *write_priv)
+{
+	for (int i = 0; i < count; i++)
+	{
+		hap_write_data_t *w = &write_data[i];
+		if (strcmp(hap_char_get_type_uuid(w->hc), HAP_CHAR_UUID_ACTIVE))
+		{
+			*(w->status) = HAP_STATUS_RES_ABSENT;
+			continue;
+		}
+		bool on = w->val.u != 0;
+		ESP_LOGI(TAG, "HomeKit: sprinkler %s", on ? "on (automatic mode on)" : "off (stop, automatic mode off)");
+		for (auto &v : s_valves)
+		{
+			if (!v)
+				continue;
+			if (!on && v->isActive())
+				v->manualStop();
+			if (v->isSchedEnabled() != on)
+			{
+				v->setSchedEnabled(on);  // updates the zone's switch and this service
+				v->save();
+			}
+		}
+		hap_char_update_val(w->hc, &w->val);
+		*(w->status) = HAP_STATUS_SUCCESS;
+	}
+	return HAP_SUCCESS;
+}
+
 /* Soil temperature from a zone's probe; false when the zone has no probe or no usable reading. */
 static bool zone_soil_temp(int ch, float *temp_c)
 {
@@ -458,6 +559,30 @@ static void sprinkler_thread_entry(void* p)
 	/* Add the service to the Accessory Object */
 	hap_acc_add_serv(accessory, fwservice);
 
+	/* Irrigation System (primary, valves linked) and per-zone automatic-mode switches. Added
+	 * last with fixed instance IDs; see HAP_IID_FIXED_BASE. */
+	{
+		int32_t iid  = HAP_IID_FIXED_BASE;
+		s_irrigation = hap_serv_irrigation_system_create(any_zone_auto() ? 1 : 0, any_zone_auto() ? 1 : 0, 0);
+		hap_serv_add_char(s_irrigation, hap_char_name_create((char *)"Sprinkler"));
+		hap_serv_mark_primary(s_irrigation);
+		hap_serv_set_read_cb(s_irrigation, irrigation_read_cb);
+		hap_serv_set_write_cb(s_irrigation, irrigation_write_cb);
+		hap_acc_add_serv(accessory, s_irrigation);
+		for (auto &v : s_valves)
+			hap_serv_link_serv(s_irrigation, v->service());
+		set_fixed_iids(s_irrigation, iid);
+
+		for (auto &v : s_valves)
+		{
+			hap_serv_t *sw = v->createAutoSwitchService();
+			hap_acc_add_serv(accessory, sw);
+			set_fixed_iids(sw, iid);
+			v->setRunChangedFn(irrigation_update);
+			v->setAutoChangedFn(irrigation_update);
+		}
+	}
+
 	/* Add the Accessory to the HomeKit Database */
 	hap_add_accessory(accessory);
 
@@ -557,6 +682,25 @@ static void sprinkler_thread_entry(void* p)
 		if (!s_probes.begin(bus, CONFIG_PROBE_POLL_INTERVAL_S))
 			ESP_LOGE(TAG, "RS485 probe bus init failed");
 	}
+
+	/* HomeKit pairing details for the web page (/homekit) */
+	s_web_base.homekit_info = []() -> WebBase::HomeKitInfo
+	{
+		WebBase::HomeKitInfo info;
+		info.setup_uri = menu_ctx.hap.setup_uri;
+#ifdef CONFIG_EXAMPLE_USE_HARDCODED_SETUP_CODE
+		info.setup_code = CONFIG_EXAMPLE_SETUP_CODE;
+#endif
+		info.paired            = hap_get_paired_controller_count();
+		info.pairing_timed_out = menu_ctx.hap.pairing_timed_out;
+		return info;
+	};
+	s_web_base.homekit_reopen_pairing = []()
+	{
+		ESP_LOGI(TAG, "Reopening HAP pairing window (web)");
+		menu_ctx.hap.pairing_timed_out = false;
+		hap_pair_setup_re_enable();
+	};
 
 	/* Start shared HTTP server then register OTA and control handlers */
 	s_web_base.start();
