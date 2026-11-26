@@ -43,10 +43,6 @@ hap_serv_t *ValveChannel::createService()
     hap_serv_add_char(m_service, hap_char_name_create((char *)m_hap_name));
     hap_serv_add_char(m_service, hap_char_set_duration_create(m_set_duration));
     hap_serv_add_char(m_service, hap_char_remaining_duration_create(0));
-    // Expected on irrigation zones linked to an Irrigation System: zone in use, and its number
-    // (with the accessory's Service Label service, numbering = 1, 2, ...).
-    hap_serv_add_char(m_service, hap_char_is_configured_create(1));
-    hap_serv_add_char(m_service, hap_char_service_label_index_create((uint8_t)(m_ch_num + 1)));
 
     hap_serv_set_priv(m_service, this);
     hap_serv_set_write_cb(m_service, hap_write_cb);
@@ -304,12 +300,7 @@ int ValveChannel::hap_write_cb(hap_write_data_t *write_data, int count, void *se
             hap_char_update_val(w->hc, &w->val);
             *(w->status) = HAP_STATUS_SUCCESS;
         }
-        else if (!strcmp(uuid, HAP_CHAR_UUID_IS_CONFIGURED))
-        {
-            // The Home app can mark a zone as not in use; just remember it.
-            hap_char_update_val(w->hc, &w->val);
-            *(w->status) = HAP_STATUS_SUCCESS;
-        }
+
         else
         {
             *(w->status) = HAP_STATUS_RES_ABSENT;
