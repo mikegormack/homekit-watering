@@ -787,7 +787,6 @@ static void sprinkler_thread_entry(void* p)
 	{
 		wifi_ap_record_t ap_info;
 		int8_t           rssi = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) ? ap_info.rssi : 0;
-		ESP_LOGI(TAG, "rssi %d", rssi);
 		return rssi;
 	};
 	menu_ctx.settings.tz_getter = []() -> int
