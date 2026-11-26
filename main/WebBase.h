@@ -17,6 +17,7 @@ public:
     };
     std::function<HomeKitInfo()> homekit_info;
     std::function<void()>        homekit_reopen_pairing;
+    std::function<void()>        homekit_reset_pairings;  // removes all pairings, then the device reboots
 
     void           start();
     void           stop();
@@ -28,4 +29,5 @@ private:
     static esp_err_t index_handler(httpd_req_t *req);
     static esp_err_t homekit_handler(httpd_req_t *req);
     static esp_err_t homekit_pairing_handler(httpd_req_t *req);
+    static esp_err_t homekit_reset_handler(httpd_req_t *req);
 };

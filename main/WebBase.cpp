@@ -1,7 +1,9 @@
 
 #include "WebBase.h"
 #include <esp_log.h>
+#include <esp_timer.h>
 #include <memory>
+#include <string.h>
 #include <stdio.h>
 #include <qrcodegen.h>
 
@@ -40,7 +42,7 @@ void WebBase::start()
     config.max_open_sockets  = 5;
     config.stack_size        = 8192;
     config.recv_wait_timeout = 30;   // needed for large OTA uploads
-    config.max_uri_handlers  = 28;   // base (3) + OTA (3) + control (12) + probes (5), with headroom
+    config.max_uri_handlers  = 28;   // base (4) + OTA (3) + control (12) + probes (5), with headroom
 
     if (httpd_start(&m_server, &config) != ESP_OK)
     {
@@ -52,6 +54,7 @@ void WebBase::start()
         {"/", HTTP_GET, index_handler, nullptr},
         {"/homekit", HTTP_GET, homekit_handler, this},
         {"/api/homekit/pairing", HTTP_POST, homekit_pairing_handler, this},
+        {"/api/homekit/reset", HTTP_POST, homekit_reset_handler, this},
     };
     for (auto &u : uris)
         httpd_register_uri_handler(m_server, &u);
@@ -109,6 +112,15 @@ static const char *HOMEKIT_TAIL = R"html(
       fetch('/api/homekit/pairing', { method: 'POST' }).then(r => r.text())
         .then(t => { document.getElementById('msg').textContent = t; });
     }
+    function resetPairing() {
+      if (!confirm('Remove the HomeKit pairing?\n\nThe sprinkler restarts as a new, unpaired accessory. ' +
+                   'In the Home app it will show "No Response": remove it there too, then add it again ' +
+                   'with the code on this page. Rooms, scenes and automations using it are lost.')) return;
+      fetch('/api/homekit/reset', { method: 'POST', body: 'reset' }).then(r => r.text()).then(t => {
+        document.getElementById('rmsg').textContent = t;
+        setTimeout(() => location.reload(), 8000);
+      });
+    }
   </script>
 </body>
 </html>)html";
@@ -163,8 +175,9 @@ esp_err_t WebBase::homekit_handler(httpd_req_t *req)
         snprintf(buf, sizeof(buf), "<p class=\"ok\">Paired with %d controller%s.</p>", info.paired,
                  info.paired == 1 ? "" : "s");
         body += buf;
-        body += "<p>To add it again, first remove the Sprinkler accessory in the Home app (or reset pairing in the "
-                "device menu: WIFI &rarr; Reset Pairing). It can then be added with this code.</p>";
+        body += "<p>To add it again, first remove the Sprinkler accessory in the Home app, or remove the pairing "
+                "here. It can then be added with this code.</p>";
+        body += "<p><button onclick=\"resetPairing()\">Remove pairing</button> <span id=\"rmsg\"></span></p>";
     }
     else
     {
@@ -194,5 +207,40 @@ esp_err_t WebBase::homekit_pairing_handler(httpd_req_t *req)
     if (self->homekit_reopen_pairing)
         self->homekit_reopen_pairing();
     httpd_resp_sendstr(req, "Pairing window open");
+    return ESP_OK;
+}
+
+esp_err_t WebBase::homekit_reset_handler(httpd_req_t *req)
+{
+    WebBase *self = static_cast<WebBase *>(req->user_ctx);
+
+    // Body "reset" guards against an accidental empty POST.
+    char body[16] = {};
+    int  n        = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (n <= 0 || strncmp(body, "reset", 5) != 0)
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing confirmation");
+        return ESP_FAIL;
+    }
+    if (!self->homekit_reset_pairings)
+    {
+        httpd_resp_sendstr(req, "Not available");
+        return ESP_OK;
+    }
+
+    ESP_LOGW(TAG, "HomeKit pairings reset from the web page");
+    httpd_resp_sendstr(req, "Pairing removed - restarting, this page reloads shortly");
+
+    // Reset (and the reboot it triggers) after the reply has gone out.
+    static esp_timer_handle_t t = nullptr;
+    if (!t)
+    {
+        esp_timer_create_args_t args = {};
+        args.callback                = [](void *arg) { (*static_cast<std::function<void()> *>(arg))(); };
+        args.arg                     = &self->homekit_reset_pairings;
+        args.name                    = "hap_reset";
+        esp_timer_create(&args, &t);
+    }
+    esp_timer_start_once(t, 1000000);
     return ESP_OK;
 }

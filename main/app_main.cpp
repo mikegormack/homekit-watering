@@ -695,6 +695,7 @@ static void sprinkler_thread_entry(void* p)
 		info.pairing_timed_out = menu_ctx.hap.pairing_timed_out;
 		return info;
 	};
+	s_web_base.homekit_reset_pairings = []() { hap_reset_pairings(); };  // reboots the accessory
 	s_web_base.homekit_reopen_pairing = []()
 	{
 		ESP_LOGI(TAG, "Reopening HAP pairing window (web)");
