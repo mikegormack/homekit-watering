@@ -320,10 +320,14 @@ int ValveChannel::hap_write_cb(hap_write_data_t *write_data, int count, void *se
 
 int ValveChannel::auto_read_cb(hap_char_t *hc, hap_status_t *status, void *serv_priv, void *read_priv)
 {
+    // Called for every characteristic of the switch (On and Name): only On is ours to update.
     ValveChannel *self = static_cast<ValveChannel *>(serv_priv);
-    hap_val_t     val;
-    val.b = self->isSchedEnabled();
-    hap_char_update_val(hc, &val);
+    if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_ON))
+    {
+        hap_val_t val;
+        val.b = self->isSchedEnabled();
+        hap_char_update_val(hc, &val);
+    }
     *status = HAP_STATUS_SUCCESS;
     return HAP_SUCCESS;
 }
