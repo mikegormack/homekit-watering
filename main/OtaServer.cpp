@@ -1,5 +1,6 @@
 
 #include "OtaServer.h"
+#include "WebLog.h"
 
 #include <esp_log.h>
 #include <stdio.h>
@@ -77,6 +78,8 @@ static const char *SYSTEM_HTML = R"html(<!DOCTYPE html>
           ['Last restart', RST[d.reset_reason] || ('reason ' + d.reset_reason)],
           ['Free memory (lowest)', kb(d.heap_free) + ' (' + kb(d.heap_min) + ')'],
         ];
+        if (d.last_crash) rows.push(['Last crash', '<span style="color:#c00;word-break:break-all">' +
+          d.last_crash.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span>']);
         document.getElementById('info').innerHTML = rows.map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('');
       }).catch(() => {});
     }
@@ -177,13 +180,24 @@ esp_err_t OtaServer::info_handler(httpd_req_t *req)
 {
     const esp_app_desc_t  *desc = esp_app_get_description();
     const esp_partition_t *part = esp_ota_get_running_partition();
-    char buf[384];
+    // Last crash text, JSON-escaped
+    char        crash[600];
+    size_t      k = 0;
+    for (const char *p = weblog::last_crash(); *p && k < sizeof(crash) - 2; p++)
+    {
+        if (*p == '"' || *p == '\\')
+            crash[k++] = '\\';
+        crash[k++] = (*p >= ' ') ? *p : ' ';
+    }
+    crash[k] = '\0';
+
+    char buf[1024];
     snprintf(buf, sizeof(buf),
              "{\"version\":\"%s\",\"date\":\"%s\",\"time\":\"%s\",\"idf\":\"%s\",\"partition\":\"%s\","
-             "\"uptime_s\":%lld,\"reset_reason\":%d,\"heap_free\":%lu,\"heap_min\":%lu}",
+             "\"uptime_s\":%lld,\"reset_reason\":%d,\"heap_free\":%lu,\"heap_min\":%lu,\"last_crash\":\"%s\"}",
              desc->version, desc->date, desc->time, desc->idf_ver, part ? part->label : "?",
              (long long)(esp_timer_get_time() / 1000000), (int)esp_reset_reason(),
-             (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size());
+             (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size(), crash);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     return httpd_resp_sendstr(req, buf);

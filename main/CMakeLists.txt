@@ -45,3 +45,6 @@ idf_component_register(
 	REQUIRES ${req}
 	INCLUDE_DIRS ${incl}
 )
+
+# WebLog.cpp wraps the panic handler to keep crash details for the /logs and /system pages.
+target_link_libraries(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=esp_panic_handler")
