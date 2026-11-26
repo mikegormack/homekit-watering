@@ -30,4 +30,7 @@ private:
     static esp_err_t homekit_handler(httpd_req_t *req);
     static esp_err_t homekit_pairing_handler(httpd_req_t *req);
     static esp_err_t homekit_reset_handler(httpd_req_t *req);
+    static esp_err_t logs_page_handler(httpd_req_t *req);
+    static esp_err_t logs_get_handler(httpd_req_t *req);
+    static esp_err_t logs_clear_handler(httpd_req_t *req);
 };

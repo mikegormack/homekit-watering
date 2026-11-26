@@ -34,6 +34,7 @@ set (srcs
 	OtaServer.cpp
 	ControlServer.cpp
 	WebBase.cpp
+	WebLog.cpp
 	EventLog.cpp
 	MoistureTrend.cpp
 	ProbeServer.cpp

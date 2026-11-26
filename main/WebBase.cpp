@@ -1,6 +1,8 @@
 
 #include "WebBase.h"
+#include "WebLog.h"
 #include <esp_log.h>
+#include <stdlib.h>
 #include <esp_timer.h>
 #include <memory>
 #include <string.h>
@@ -31,6 +33,7 @@ static const char *BASE_HTML = R"html(<!DOCTYPE html>
   <a class="btn" href="/control">Valve Control &amp; Schedule</a>
   <a class="btn" href="/probes">Soil Probes</a>
   <a class="btn" href="/homekit">HomeKit Pairing</a>
+  <a class="btn" href="/logs">Device Log</a>
   <a class="btn" href="/update">Firmware Update</a>
 </body>
 </html>)html";
@@ -42,7 +45,7 @@ void WebBase::start()
     config.max_open_sockets  = 5;
     config.stack_size        = 8192;
     config.recv_wait_timeout = 30;   // needed for large OTA uploads
-    config.max_uri_handlers  = 28;   // base (4) + OTA (3) + control (12) + probes (5), with headroom
+    config.max_uri_handlers  = 32;   // base (7) + OTA (3) + control (12) + probes (5), with headroom
 
     if (httpd_start(&m_server, &config) != ESP_OK)
     {
@@ -55,6 +58,9 @@ void WebBase::start()
         {"/homekit", HTTP_GET, homekit_handler, this},
         {"/api/homekit/pairing", HTTP_POST, homekit_pairing_handler, this},
         {"/api/homekit/reset", HTTP_POST, homekit_reset_handler, this},
+        {"/logs", HTTP_GET, logs_page_handler, nullptr},
+        {"/api/logs", HTTP_GET, logs_get_handler, nullptr},
+        {"/api/logs/clear", HTTP_POST, logs_clear_handler, nullptr},
     };
     for (auto &u : uris)
         httpd_register_uri_handler(m_server, &u);
@@ -243,4 +249,95 @@ esp_err_t WebBase::homekit_reset_handler(httpd_req_t *req)
     }
     esp_timer_start_once(t, 1000000);
     return ESP_OK;
+}
+
+// ---------------------------------------------------------------------------
+// Device log: recent console output (see WebLog.h), live
+// ---------------------------------------------------------------------------
+
+static const char *LOGS_HTML = R"html(<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Device Log</title>
+  <style>
+    body { font-family: sans-serif; max-width: 1000px; margin: 24px auto; padding: 0 16px; }
+    h1   { font-size: 1.3em; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+    pre  { background: #111; color: #ddd; padding: 12px; border-radius: 8px; height: 70vh; overflow: auto;
+           font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
+    button { padding: 6px 12px; cursor: pointer; border-radius: 4px; border: 1px solid #aaa; }
+    .muted { color: #777; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <h1>Device Log</h1>
+  <div class="row">
+    <label><input type="checkbox" id="follow" checked> follow</label>
+    <label><input type="checkbox" id="pause"> pause</label>
+    <button onclick="clearLog()">Clear</button>
+    <button onclick="copyLog()">Copy</button>
+    <span class="muted">Last 8 KB of console output, updated every second. <a href="/">Home</a></span>
+  </div>
+  <pre id="log"></pre>
+  <script>
+    let pos = 0;
+    const el = document.getElementById('log');
+    function poll() {
+      if (document.getElementById('pause').checked) return;
+      fetch('/api/logs?since=' + pos).then(r => {
+        const next = parseInt(r.headers.get('X-Next') || pos);
+        return r.text().then(t => {
+          if (next < pos) el.textContent = '';          // device restarted or log cleared
+          pos = next;
+          if (t) {
+            el.textContent += t;
+            if (el.textContent.length > 200000) el.textContent = el.textContent.slice(-150000);
+            if (document.getElementById('follow').checked) el.scrollTop = el.scrollHeight;
+          }
+        });
+      }).catch(() => {});
+    }
+    function clearLog() { fetch('/api/logs/clear', { method: 'POST' }).then(() => { el.textContent = ''; pos = 0; }); }
+    function copyLog() { navigator.clipboard && navigator.clipboard.writeText(el.textContent); }
+    poll();
+    setInterval(poll, 1000);
+  </script>
+</body>
+</html>)html";
+
+esp_err_t WebBase::logs_page_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_sendstr(req, LOGS_HTML);
+}
+
+esp_err_t WebBase::logs_get_handler(httpd_req_t *req)
+{
+    uint32_t since = 0;
+    char     q[32], v[16];
+    if (httpd_req_get_url_query_str(req, q, sizeof(q)) == ESP_OK && httpd_query_key_value(q, "since", v, sizeof(v)) == ESP_OK)
+        since = (uint32_t)strtoul(v, nullptr, 10);
+
+    char *buf = (char *)malloc(weblog::BUF_SIZE + 1);
+    if (!buf)
+        return httpd_resp_send_500(req);
+    size_t   n    = 0;
+    uint32_t next = weblog::read(since, buf, weblog::BUF_SIZE + 1, &n);
+
+    char next_s[12];
+    snprintf(next_s, sizeof(next_s), "%lu", (unsigned long)next);
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(req, "X-Next", next_s);
+    esp_err_t ret = httpd_resp_send(req, buf, (ssize_t)n);
+    free(buf);
+    return ret;
+}
+
+esp_err_t WebBase::logs_clear_handler(httpd_req_t *req)
+{
+    weblog::clear();
+    return httpd_resp_sendstr(req, "OK");
 }

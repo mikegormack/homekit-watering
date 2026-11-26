@@ -57,6 +57,7 @@ extern const char* timezone_posix(int idx); // defined in TimezoneScreen.cpp
 #include "OtaServer.h"
 #include "ControlServer.h"
 #include "WebBase.h"
+#include "WebLog.h"
 #include "EventLog.h"
 #include "MoistureTrend.h"
 #include "ProbeServer.h"
@@ -581,6 +582,11 @@ static void sprinkler_thread_entry(void* p)
 			v->setRunChangedFn(irrigation_update);
 			v->setAutoChangedFn(irrigation_update);
 		}
+
+		/* Zone numbering for the valves' Service Label Index: 1 = Arabic numerals */
+		hap_serv_t *label = hap_serv_service_label_create(1);
+		hap_acc_add_serv(accessory, label);
+		set_fixed_iids(label, iid);
 	}
 
 	/* Add the Accessory to the HomeKit Database */
@@ -884,6 +890,7 @@ static void sprinkler_thread_entry(void* p)
 
 extern "C" void app_main()
 {
+	weblog::init();  // capture console output for the /logs page; before any other task starts
 	xTaskCreate(sprinkler_thread_entry, SPRINKLER_TASK_NAME, SPRINKLER_TASK_STACKSIZE, NULL, SPRINKLER_TASK_PRIORITY,
 	            NULL);
 }
