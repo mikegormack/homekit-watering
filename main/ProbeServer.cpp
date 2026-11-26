@@ -25,7 +25,8 @@ static const char *PROBES_HTML = R"html(<!DOCTYPE html>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Soil Probes</title>
   <style>
-    body  { font-family: sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; }
+    body  { font-family: sans-serif; max-width: 760px; margin: 24px auto 40px; padding: 0 16px; }
+    .nav  { margin: 0 0 8px; }
     h1    { font-size: 1.4em; }
     h2    { font-size: 1.1em; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 0; }
     h3    { font-size: 1em; margin: 16px 0 6px; }
@@ -53,6 +54,7 @@ static const char *PROBES_HTML = R"html(<!DOCTYPE html>
   </style>
 </head>
 <body>
+  <p class="nav"><a href="/">&larr; Home</a></p>
   <h1>Soil Probes</h1>
   <div id="msg"></div>
 
@@ -138,7 +140,8 @@ static const char *PROBES_HTML = R"html(<!DOCTYPE html>
   <div class="card">
     <h2>Add probes</h2>
     <p class="muted">New probes answer on address 1. Connect one new probe at a time, add it, then change its
-      address so the next new one can use 1.</p>
+      address so the next new one can use 1. Each probe appears in the Home app as a humidity and a temperature sensor once the controller
+      has restarted (<a href="/system">System</a> page).</p>
     <div class="row">
       Address <input type="number" id="a-addr" min="1" max="247" value="1">
       Name <input type="text" id="a-name" maxlength="15" placeholder="e.g. Bed A">
@@ -148,13 +151,6 @@ static const char *PROBES_HTML = R"html(<!DOCTYPE html>
       <button id="scan-btn" onclick="scan()">Scan bus (1-247)</button>
       <span class="muted">takes about 30 s</span>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>HomeKit</h2>
-    <p class="muted">Each probe in the list appears in the Home app as a humidity and a temperature sensor.
-      Added or removed probes show up after the controller restarts.</p>
-    <div class="row"><button onclick="restart()">Restart controller</button> <a href="/">Home</a> <a href="/control">Valve control</a></div>
   </div>
 
   <script>
@@ -339,10 +335,6 @@ static const char *PROBES_HTML = R"html(<!DOCTYPE html>
       const zones = [0, 1].map(ch => ({ probe: parseInt($('z' + ch + 'p').value) || 0,
                                        thr: parseInt($('z' + ch + 't').value) || 0 }));
       act({ action: 'zones', zones }, 'Zones saved').catch(() => {});
-    }
-    function restart() {
-      if (confirm('Restart the controller? Running valves stop.'))
-        act({ action: 'restart' }, 'Restarting - reload in a few seconds').catch(() => {});
     }
     function updateStaged() {
       if (!confirm('Update probe ' + sel + ' with the staged image?')) return;
@@ -698,18 +690,6 @@ esp_err_t ProbeServer::action_handler(httpd_req_t *req)
             else
                 s->zone_set(ch, Zone{(uint8_t)probe, (uint8_t)thr});
         }
-    }
-    else if (!strcmp(act, "restart"))
-    {
-        cJSON_Delete(root);
-        send_result(req, 0);
-        esp_timer_handle_t     t;
-        esp_timer_create_args_t args = {};
-        args.callback                = [](void *) { esp_restart(); };
-        args.name                    = "restart";
-        esp_timer_create(&args, &t);
-        esp_timer_start_once(t, 1000000);
-        return ESP_OK;
     }
     else
     {

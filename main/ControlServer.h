@@ -52,6 +52,7 @@ private:
     char     m_stop_uri[NUM_VALVES][24];
 
     static esp_err_t index_handler(httpd_req_t *req);
+    static esp_err_t events_handler(httpd_req_t *req);   // /events page
     static esp_err_t status_handler(httpd_req_t *req);
     static esp_err_t valve_run_handler(httpd_req_t *req);
     static esp_err_t valve_stop_handler(httpd_req_t *req);

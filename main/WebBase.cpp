@@ -32,9 +32,10 @@ static const char *BASE_HTML = R"html(<!DOCTYPE html>
   <h1>&#127807; Sprinkler</h1>
   <a class="btn" href="/control">Valve Control &amp; Schedule</a>
   <a class="btn" href="/probes">Soil Probes</a>
+  <a class="btn" href="/events">Event Log</a>
   <a class="btn" href="/homekit">HomeKit Pairing</a>
   <a class="btn" href="/logs">Device Log</a>
-  <a class="btn" href="/update">Firmware Update</a>
+  <a class="btn" href="/system">System &amp; Firmware Update</a>
 </body>
 </html>)html";
 
@@ -45,7 +46,7 @@ void WebBase::start()
     config.max_open_sockets  = 5;
     config.stack_size        = 8192;
     config.recv_wait_timeout = 30;   // needed for large OTA uploads
-    config.max_uri_handlers  = 32;   // base (7) + OTA (3) + control (12) + probes (5), with headroom
+    config.max_uri_handlers  = 40;   // base (7) + system/OTA (6) + control (13) + probes (5), with headroom
 
     if (httpd_start(&m_server, &config) != ESP_OK)
     {
@@ -95,7 +96,8 @@ static const char *HOMEKIT_HEAD = R"html(<!DOCTYPE html>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>HomeKit Pairing</title>
   <style>
-    body { font-family: sans-serif; max-width: 420px; margin: 40px auto; padding: 0 16px; text-align: center; }
+    body { font-family: sans-serif; max-width: 420px; margin: 24px auto 40px; padding: 0 16px; text-align: center; }
+    .nav { margin: 0 0 8px; text-align: left; }
     h1   { font-size: 1.4em; }
     .qr  { display: inline-block; background: #fff; padding: 12px; border: 1px solid #ddd; border-radius: 12px; }
     .qr svg { display: block; width: 240px; height: 240px; }
@@ -108,11 +110,11 @@ static const char *HOMEKIT_HEAD = R"html(<!DOCTYPE html>
   </style>
 </head>
 <body>
+  <p class="nav"><a href="/">&larr; Home</a></p>
   <h1>HomeKit Pairing</h1>
 )html";
 
 static const char *HOMEKIT_TAIL = R"html(
-  <p><a href="/">Home</a></p>
   <script>
     function reopen() {
       fetch('/api/homekit/pairing', { method: 'POST' }).then(r => r.text())
@@ -272,13 +274,14 @@ static const char *LOGS_HTML = R"html(<!DOCTYPE html>
   </style>
 </head>
 <body>
+  <p style="margin:0 0 8px"><a href="/">&larr; Home</a></p>
   <h1>Device Log</h1>
   <div class="row">
     <label><input type="checkbox" id="follow" checked> follow</label>
     <label><input type="checkbox" id="pause"> pause</label>
     <button onclick="clearLog()">Clear</button>
     <button onclick="copyLog()">Copy</button>
-    <span class="muted">Last 8 KB of console output, updated every second. <a href="/">Home</a></span>
+    <span class="muted">Last 8 KB of console output, updated every second.</span>
   </div>
   <pre id="log"></pre>
   <script>

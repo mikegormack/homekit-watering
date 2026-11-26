@@ -20,7 +20,9 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Sprinkler Control</title>
   <style>
-    body  { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 0 16px; }
+    body  { font-family: sans-serif; max-width: 600px; margin: 24px auto 40px; padding: 0 16px; }
+    .nav  { margin: 0 0 8px; }
+    a     { color: #2a5db0; }
     h1    { font-size: 1.4em; }
     h2    { font-size: 1.1em; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 0; }
     .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
@@ -36,13 +38,13 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
     td, th { padding: 6px 10px; text-align: left; }
     th     { font-weight: normal; color: #666; font-size: 0.9em; }
     #msg   { margin-top: 8px; font-size: 0.9em; }
-    #log-table td:first-child { white-space: nowrap; color: #666; font-size: 0.85em; padding-right: 12px; }
     #trend-table td:first-child { white-space: nowrap; color: #666; font-size: 0.85em; padding-right: 12px; }
     .rem { display: inline-block; min-width: 120px; }
     .soil { display: inline-block; min-width: 110px; color: #2a6db0; font-size: 0.95em; }
   </style>
 </head>
 <body>
+  <p class="nav"><a href="/">&larr; Home</a></p>
   <h1>Sprinkler Control</h1>
 
   <div class="card">
@@ -92,19 +94,6 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
     <div class="row" style="margin-top:12px">
       <button onclick="saveSchedule()">Save Schedule</button>
       <span id="msg"></span>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Event Log</h2>
-    <table id="log-table">
-      <tbody id="log-body">
-        <tr><td colspan="2" style="color:#aaa">Loading...</td></tr>
-      </tbody>
-    </table>
-    <div class="row" style="margin-top:12px">
-      <button class="stop" onclick="clearLog()">Clear Log</button>
-      <span id="log-msg"></span>
     </div>
   </div>
 
@@ -198,15 +187,6 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
       fetch('/api/valve/' + ch + '/stop', { method: 'POST' });
     }
 
-    const EVT = {
-      1:'manual start', 2:'manual stop', 3:'sched start',
-      4:'sched skip (dur=0)', 5:'sched skip (moisture)',
-      6:'HomeKit start', 7:'HomeKit stop', 8:'run complete',
-      9:'sched disabled', 10:'boot', 11:'crash', 12:'OTA complete',
-      13:'sched start (no probe reading)', 14:'probe offline', 15:'probe online', 16:'probe firmware updated',
-      17:'automatic mode'
-    };
-
     function fmtDate(ts) {
       const d = new Date(ts * 1000);
       const Y = d.getFullYear();
@@ -216,66 +196,6 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
       const Mi = pad(d.getMinutes());
       const S = pad(d.getSeconds());
       return Y + '-' + Mo + '-' + D + ' ' + H + ':' + Mi + ':' + S;
-    }
-
-    function fmtEvt(e) {
-      const ts = e.ts ? fmtDate(e.ts) : '--';
-      const ch = e.ch === 255 ? 'SYS' : 'CH' + (e.ch + 1);
-      const name = EVT[e.type] || ('type ' + e.type);
-      let extra = '';
-      if (e.type === 1 || e.type === 3 || e.type === 6) {
-        const m = Math.floor(e.val / 60), s = e.val % 60;
-        extra = ' (' + m + 'min' + (s ? ' ' + s + 's' : '') + ')';
-      } else if (e.type === 5) {
-        extra = ' (moisture=' + e.val + '%)';
-      } else if (e.type === 17) {
-        extra = e.val ? ' on' : ' off';
-      } else if (e.type >= 13 && e.type <= 15) {
-        extra = ' (probe ' + e.val + ')';
-      } else if (e.type === 16) {
-        extra = ' (probe ' + (e.val >> 8) + ', v' + ((e.val >> 4) & 15) + '.' + (e.val & 15) + ')';
-      } else if (e.type === 10 || e.type === 11) {
-        // esp_reset_reason_t
-        const RST = { 1:'power on', 2:'reset pin', 3:'software', 4:'panic', 5:'interrupt watchdog',
-                      6:'task watchdog', 7:'watchdog', 8:'deep sleep', 9:'brownout', 10:'SDIO' };
-        extra = ' (' + (RST[e.val] || 'reason ' + e.val) + ')';
-      } else if (e.type === 12 && e.val) {
-        const ma = Math.floor(e.val / 10000);
-        const mi = Math.floor((e.val % 10000) / 100);
-        const pa = e.val % 100;
-        extra = ' (v' + ma + '.' + mi + '.' + pa + ')';
-      }
-      return { ts, desc: ch + ': ' + name + extra };
-    }
-
-    function refreshLog() {
-      return fetch('/api/log')
-        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-        .then(entries => {
-          const tbody = document.getElementById('log-body');
-          tbody.innerHTML = '';
-          if (!entries.length) {
-            tbody.innerHTML = '<tr><td colspan="2" style="color:#aaa">No events yet</td></tr>';
-            return;
-          }
-          entries.forEach(e => {
-            const f = fmtEvt(e);
-            const tr = document.createElement('tr');
-            tr.innerHTML = '<td>' + f.ts + '</td><td>' + f.desc + '</td>';
-            tbody.appendChild(tr);
-          });
-        }).catch(e => {
-          const tbody = document.getElementById('log-body');
-          if (tbody) tbody.innerHTML = '<tr><td colspan="2" style="color:#c00">Error: ' + e.message + '</td></tr>';
-        });
-    }
-
-    function clearLog() {
-      fetch('/api/log/clear', { method: 'POST' }).then(() => {
-        document.getElementById('log-msg').textContent = 'Log cleared';
-        setTimeout(() => document.getElementById('log-msg').textContent = '', 3000);
-        refreshLog();
-      });
     }
 
     // Trend entries: { ts, m: [CH1 %, CH2 %], t: [CH1 degC, CH2 degC] }, null where there was no reading.
@@ -402,13 +322,137 @@ static const char* CONTROL_HTML = R"html(<!DOCTYPE html>
     }
 
     Promise.all([loadSchedule(), refreshStatus()])
-      .then(() => refreshLog())
       .then(() => loadTrend())
       .then(() => {
         setInterval(refreshStatus, 2000);
-        setInterval(refreshLog, 10000);
         setInterval(loadTrend, 300000);
       });
+  </script>
+</body>
+</html>)html";
+
+// ---------------------------------------------------------------------------
+// Event log page
+// ---------------------------------------------------------------------------
+
+static const char *EVENTS_HTML = R"html(<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Event Log</title>
+  <style>
+    body  { font-family: sans-serif; max-width: 600px; margin: 24px auto 40px; padding: 0 16px; }
+    .nav  { margin: 0 0 8px; }
+    a     { color: #2a5db0; }
+    h1    { font-size: 1.4em; }
+    .row  { display: flex; align-items: center; gap: 12px; margin: 8px 0; flex-wrap: wrap; }
+    button { padding: 7px 14px; cursor: pointer; border-radius: 4px; border: 1px solid #aaa; }
+    button.stop { background: #fee; border-color: #c66; }
+    table  { border-collapse: collapse; width: 100%; }
+    td     { padding: 6px 10px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+    td:first-child { white-space: nowrap; color: #666; font-size: 0.85em; padding-right: 12px; }
+  </style>
+</head>
+<body>
+  <p class="nav"><a href="/">&larr; Home</a></p>
+  <h1>Event Log</h1>
+  <div class="row">
+    <button class="stop" onclick="clearLog()">Clear Log</button>
+    <span id="log-msg"></span>
+  </div>
+  <table id="log-table">
+    <tbody id="log-body">
+      <tr><td colspan="2" style="color:#aaa">Loading...</td></tr>
+    </tbody>
+  </table>
+
+  <script>
+    function pad(n) { return String(n).padStart(2,'0'); }
+
+    const EVT = {
+      1:'manual start', 2:'manual stop', 3:'sched start',
+      4:'sched skip (dur=0)', 5:'sched skip (moisture)',
+      6:'HomeKit start', 7:'HomeKit stop', 8:'run complete',
+      9:'sched disabled', 10:'boot', 11:'crash', 12:'OTA complete',
+      13:'sched start (no probe reading)', 14:'probe offline', 15:'probe online', 16:'probe firmware updated',
+      17:'automatic mode'
+    };
+
+    function fmtDate(ts) {
+      const d = new Date(ts * 1000);
+      const Y = d.getFullYear();
+      const Mo = pad(d.getMonth() + 1);
+      const D = pad(d.getDate());
+      const H = pad(d.getHours());
+      const Mi = pad(d.getMinutes());
+      const S = pad(d.getSeconds());
+      return Y + '-' + Mo + '-' + D + ' ' + H + ':' + Mi + ':' + S;
+    }
+
+    function fmtEvt(e) {
+      const ts = e.ts ? fmtDate(e.ts) : '--';
+      const ch = e.ch === 255 ? 'SYS' : 'CH' + (e.ch + 1);
+      const name = EVT[e.type] || ('type ' + e.type);
+      let extra = '';
+      if (e.type === 1 || e.type === 3 || e.type === 6) {
+        const m = Math.floor(e.val / 60), s = e.val % 60;
+        extra = ' (' + m + 'min' + (s ? ' ' + s + 's' : '') + ')';
+      } else if (e.type === 5) {
+        extra = ' (moisture=' + e.val + '%)';
+      } else if (e.type === 17) {
+        extra = e.val ? ' on' : ' off';
+      } else if (e.type >= 13 && e.type <= 15) {
+        extra = ' (probe ' + e.val + ')';
+      } else if (e.type === 16) {
+        extra = ' (probe ' + (e.val >> 8) + ', v' + ((e.val >> 4) & 15) + '.' + (e.val & 15) + ')';
+      } else if (e.type === 10 || e.type === 11) {
+        // esp_reset_reason_t
+        const RST = { 1:'power on', 2:'reset pin', 3:'software', 4:'panic', 5:'interrupt watchdog',
+                      6:'task watchdog', 7:'watchdog', 8:'deep sleep', 9:'brownout', 10:'SDIO' };
+        extra = ' (' + (RST[e.val] || 'reason ' + e.val) + ')';
+      } else if (e.type === 12 && e.val) {
+        const ma = Math.floor(e.val / 10000);
+        const mi = Math.floor((e.val % 10000) / 100);
+        const pa = e.val % 100;
+        extra = ' (v' + ma + '.' + mi + '.' + pa + ')';
+      }
+      return { ts, desc: ch + ': ' + name + extra };
+    }
+
+    function refreshLog() {
+      return fetch('/api/log')
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(entries => {
+          const tbody = document.getElementById('log-body');
+          tbody.innerHTML = '';
+          if (!entries.length) {
+            tbody.innerHTML = '<tr><td colspan="2" style="color:#aaa">No events yet</td></tr>';
+            return;
+          }
+          entries.forEach(e => {
+            const f = fmtEvt(e);
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + f.ts + '</td><td>' + f.desc + '</td>';
+            tbody.appendChild(tr);
+          });
+        }).catch(e => {
+          const tbody = document.getElementById('log-body');
+          if (tbody) tbody.innerHTML = '<tr><td colspan="2" style="color:#c00">Error: ' + e.message + '</td></tr>';
+        });
+    }
+
+    function clearLog() {
+      if (!confirm('Clear the event log?')) return;
+      fetch('/api/log/clear', { method: 'POST' }).then(() => {
+        document.getElementById('log-msg').textContent = 'Log cleared';
+        setTimeout(() => document.getElementById('log-msg').textContent = '', 3000);
+        refreshLog();
+      });
+    }
+
+    refreshLog();
+    setInterval(refreshLog, 10000);
   </script>
 </body>
 </html>)html";
@@ -435,6 +479,7 @@ void ControlServer::start(httpd_handle_t server)
 
 	httpd_uri_t fixed_uris[] = {
 	    {"/control", HTTP_GET, index_handler, this},
+	    {"/events", HTTP_GET, events_handler, this},
 	    {"/api/status", HTTP_GET, status_handler, this},
 	    {"/api/schedule", HTTP_GET, sched_get_handler, this},
 	    {"/api/schedule", HTTP_POST, sched_post_handler, this},
@@ -472,6 +517,13 @@ esp_err_t ControlServer::index_handler(httpd_req_t* req)
 {
 	httpd_resp_set_type(req, "text/html");
 	httpd_resp_sendstr(req, CONTROL_HTML);
+	return ESP_OK;
+}
+
+esp_err_t ControlServer::events_handler(httpd_req_t* req)
+{
+	httpd_resp_set_type(req, "text/html");
+	httpd_resp_sendstr(req, EVENTS_HTML);
 	return ESP_OK;
 }
 

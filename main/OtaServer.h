@@ -22,7 +22,10 @@ public:
 private:
     httpd_handle_t m_server = nullptr;
 
-    static esp_err_t index_handler(httpd_req_t *req);
+    static esp_err_t index_handler(httpd_req_t *req);     // /system page
+    static esp_err_t redirect_handler(httpd_req_t *req);  // /update -> /system
+    static esp_err_t info_handler(httpd_req_t *req);      // /api/system
+    static esp_err_t restart_handler(httpd_req_t *req);   // /api/system/restart
     static esp_err_t update_handler(httpd_req_t *req);
     static esp_err_t version_handler(httpd_req_t *req);
 };

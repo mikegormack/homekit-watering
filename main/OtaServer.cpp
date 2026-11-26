@@ -6,33 +6,87 @@
 #include <esp_ota_ops.h>
 #include <esp_timer.h>
 #include <esp_app_format.h>
+#include <esp_system.h>
 
 static const char *TAG = "OtaServer";
 
-static const char *INDEX_HTML = R"html(<!DOCTYPE html>
+static const char *SYSTEM_HTML = R"html(<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Firmware Update</title>
+  <title>System</title>
   <style>
-    body { font-family: sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
-    h1   { font-size: 1.4em; }
-    input[type=file] { display: block; margin: 16px 0; }
-    button { padding: 10px 24px; font-size: 1em; cursor: pointer; }
-    progress { display: none; width: 100%; margin-top: 16px; }
-    #status { margin-top: 8px; font-weight: bold; }
+    body  { font-family: sans-serif; max-width: 600px; margin: 24px auto 40px; padding: 0 16px; }
+    .nav  { margin: 0 0 8px; }
+    a     { color: #2a5db0; }
+    h1    { font-size: 1.4em; }
+    h2    { font-size: 1.1em; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 0; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    table { border-collapse: collapse; width: 100%; }
+    td    { padding: 5px 8px 5px 0; }
+    td:first-child { color: #666; width: 45%; }
+    input[type=file] { display: block; margin: 12px 0; }
+    button { padding: 8px 16px; cursor: pointer; border-radius: 4px; border: 1px solid #aaa; }
+    button.stop { background: #fee; border-color: #c66; }
+    progress { display: none; width: 100%; margin-top: 12px; }
+    #status, #rmsg { margin-top: 8px; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>Firmware Update</h1>
-  <div id="version" style="margin-bottom:12px;color:#555;font-size:0.9em;"></div>
-  <input type="file" id="file" accept=".bin">
-  <button id="btn" onclick="upload()">Upload &amp; Update</button>
-  <progress id="progress" max="100" value="0"></progress>
-  <div id="status"></div>
+  <p class="nav"><a href="/">&larr; Home</a></p>
+  <h1>System</h1>
+
+  <div class="card">
+    <h2>Status</h2>
+    <table><tbody id="info"><tr><td>Loading...</td><td></td></tr></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>Firmware update</h2>
+    <p style="margin:0;color:#555;font-size:0.9em">Upload <code>build/sprinkler.bin</code>. The controller restarts with the new firmware.</p>
+    <input type="file" id="file" accept=".bin">
+    <button id="btn" onclick="upload()">Upload &amp; update</button>
+    <progress id="progress" max="100" value="0"></progress>
+    <div id="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>Restart</h2>
+    <p style="margin:0 0 12px;color:#555;font-size:0.9em">Running valves stop. Probes added or removed show up in HomeKit after a restart.</p>
+    <button class="stop" onclick="restart()">Restart controller</button>
+    <div id="rmsg"></div>
+  </div>
+
   <script>
-    fetch('/version').then(r => r.text()).then(v => { document.getElementById('version').innerText = 'Current firmware: ' + v; });
+    const RST = { 0:'unknown', 1:'power on', 2:'reset pin', 3:'software restart', 4:'crash (panic)',
+                  5:'interrupt watchdog', 6:'task watchdog', 7:'watchdog', 8:'deep sleep', 9:'brownout', 10:'SDIO' };
+    function dur(s) {
+      const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+      return (d ? d + ' d ' : '') + (d || h ? h + ' h ' : '') + m + ' min';
+    }
+    function kb(b) { return (b / 1024).toFixed(0) + ' KB'; }
+    function refresh() {
+      fetch('/api/system').then(r => r.json()).then(d => {
+        const rows = [
+          ['Firmware', d.version],
+          ['Built', d.date + ' ' + d.time],
+          ['Running from', d.partition],
+          ['ESP-IDF', d.idf],
+          ['Uptime', dur(d.uptime_s)],
+          ['Last restart', RST[d.reset_reason] || ('reason ' + d.reset_reason)],
+          ['Free memory (lowest)', kb(d.heap_free) + ' (' + kb(d.heap_min) + ')'],
+        ];
+        document.getElementById('info').innerHTML = rows.map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('');
+      }).catch(() => {});
+    }
+    function restart() {
+      if (!confirm('Restart the controller? Running valves stop.')) return;
+      fetch('/api/system/restart', { method: 'POST' }).then(r => r.text()).then(t => {
+        document.getElementById('rmsg').textContent = t;
+        setTimeout(() => location.reload(), 8000);
+      });
+    }
     function upload() {
       const file = document.getElementById('file').files[0];
       if (!file) { document.getElementById('status').innerText = 'Select a .bin file first.'; return; }
@@ -63,6 +117,8 @@ static const char *INDEX_HTML = R"html(<!DOCTYPE html>
       };
       xhr.send(file);
     }
+    refresh();
+    setInterval(refresh, 5000);
   </script>
 </body>
 </html>)html";
@@ -74,9 +130,12 @@ void OtaServer::start(httpd_handle_t server)
     m_server = server;
 
     httpd_uri_t uris[] = {
-        { "/update",  HTTP_GET,  index_handler,   nullptr },
-        { "/update",  HTTP_POST, update_handler,  this    },
-        { "/version", HTTP_GET,  version_handler, nullptr },
+        { "/system",             HTTP_GET,  index_handler,    nullptr },
+        { "/api/system",         HTTP_GET,  info_handler,     nullptr },
+        { "/api/system/restart", HTTP_POST, restart_handler,  nullptr },
+        { "/update",             HTTP_GET,  redirect_handler, nullptr },  // old page address
+        { "/update",             HTTP_POST, update_handler,   this    },
+        { "/version",            HTTP_GET,  version_handler,  nullptr },
     };
     for (auto &u : uris)
         httpd_register_uri_handler(m_server, &u);
@@ -103,7 +162,48 @@ esp_err_t OtaServer::version_handler(httpd_req_t *req)
 esp_err_t OtaServer::index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
-    httpd_resp_sendstr(req, INDEX_HTML);
+    httpd_resp_sendstr(req, SYSTEM_HTML);
+    return ESP_OK;
+}
+
+esp_err_t OtaServer::redirect_handler(httpd_req_t *req)
+{
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "/system");
+    return httpd_resp_send(req, nullptr, 0);
+}
+
+esp_err_t OtaServer::info_handler(httpd_req_t *req)
+{
+    const esp_app_desc_t  *desc = esp_app_get_description();
+    const esp_partition_t *part = esp_ota_get_running_partition();
+    char buf[384];
+    snprintf(buf, sizeof(buf),
+             "{\"version\":\"%s\",\"date\":\"%s\",\"time\":\"%s\",\"idf\":\"%s\",\"partition\":\"%s\","
+             "\"uptime_s\":%lld,\"reset_reason\":%d,\"heap_free\":%lu,\"heap_min\":%lu}",
+             desc->version, desc->date, desc->time, desc->idf_ver, part ? part->label : "?",
+             (long long)(esp_timer_get_time() / 1000000), (int)esp_reset_reason(),
+             (unsigned long)esp_get_free_heap_size(), (unsigned long)esp_get_minimum_free_heap_size());
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return httpd_resp_sendstr(req, buf);
+}
+
+esp_err_t OtaServer::restart_handler(httpd_req_t *req)
+{
+    ESP_LOGW(TAG, "Restart requested from the web page");
+    httpd_resp_sendstr(req, "Restarting - this page reloads in a few seconds");
+
+    // Restart after the reply has gone out.
+    static esp_timer_handle_t t = nullptr;
+    if (!t)
+    {
+        esp_timer_create_args_t args = {};
+        args.callback                = [](void *) { esp_restart(); };
+        args.name                    = "web_restart";
+        esp_timer_create(&args, &t);
+    }
+    esp_timer_start_once(t, 1000000);
     return ESP_OK;
 }
 
